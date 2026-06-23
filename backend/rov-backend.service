@@ -1,0 +1,15 @@
+[Unit]
+Description=ROV Backend API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/ROV/backend
+ExecStart=/usr/bin/python3 /home/pi/ROV/backend/app.py --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

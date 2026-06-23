@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROV Dashboard</title>
+  <style>
+    :root {
+      --bg: #07131a;
+      --panel: #10242f;
+      --panel-2: #163646;
+      --line: #2e5b70;
+      --text: #e7f5fb;
+      --muted: #97b8c8;
+      --accent: #4ed0ff;
+      --warn: #ffc857;
+      --danger: #ff7a7a;
+      --camera-preview-size: 520px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(78, 208, 255, 0.16), transparent 32%),
+        linear-gradient(160deg, #050d12 0%, #091b24 45%, #040a0f 100%);
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 14px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border: 1px solid rgba(78, 208, 255, 0.2);
+      border-radius: 18px;
+      background: rgba(9, 27, 36, 0.85);
+      backdrop-filter: blur(10px);
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .status-pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(78, 208, 255, 0.14);
+      color: var(--accent);
+      font-size: 0.9rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+      grid-template-rows: minmax(320px, 1fr) minmax(280px, 0.9fr);
+      grid-template-areas:
+        "cameras lidar"
+        "cameras sensors";
+      gap: 14px;
+      min-height: 0;
+    }
+
+    .panel {
+      position: relative;
+      min-height: 280px;
+      overflow: hidden;
+      border: 1px solid rgba(151, 184, 200, 0.16);
+      border-radius: 20px;
+      background:
+        linear-gradient(180deg, rgba(22, 54, 70, 0.92), rgba(7, 19, 26, 0.96));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 14px 16px;
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .panel-body {
+      height: calc(100% - 50px);
+      padding: 0 16px 16px;
+    }
+
+    .camera-panel-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .camera-cluster {
+      flex: 1 1 auto;
+      display: flex;
+      gap: 14px;
+      align-items: stretch;
+      padding: 12px;
+      border-radius: 18px;
+      background: rgba(2, 10, 15, 0.42);
+      border: 1px solid rgba(78, 208, 255, 0.12);
+    }
+
+    .camera-stack {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .camera-stack.primary-camera {
+      flex: 1.18 1 0;
+    }
+
+    .camera-caption {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .camera-preview {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      max-height: min(var(--camera-preview-size), calc(100vh - 250px));
+      min-height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      border-radius: 18px;
+      background: rgba(2, 10, 15, 0.42);
+      border: 1px solid rgba(78, 208, 255, 0.12);
+    }
+
+    .camera-frame,
+    .placeholder {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(78, 208, 255, 0.16);
+      background: #02080b;
+    }
+
+    .camera-frame {
+      object-fit: contain;
+      display: block;
+    }
+
+    .crosshair {
+      --crosshair-color: #7cff7c;
+      position: absolute;
+      inset: 10px;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .crosshair-line {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: var(--crosshair-color);
+      box-shadow: 0 0 10px var(--crosshair-color);
+      transform: translate(-50%, -50%);
+      opacity: 0.95;
+    }
+
+    .crosshair-line.horizontal {
+      width: 96px;
+      height: 2px;
+    }
+
+    .crosshair-line.vertical {
+      width: 2px;
+      height: 96px;
+    }
+
+    .crosshair-ring {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--crosshair-color);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--crosshair-color);
+      transform: translate(-50%, -50%);
+      opacity: 0.95;
+    }
+
+    .camera-overlay {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+
+    .camera-overlay-line,
+    .camera-alert {
+      margin: 0;
+      padding: 8px 12px;
+      border-radius: 12px;
+      backdrop-filter: blur(8px);
+      font-size: 0.88rem;
+      letter-spacing: 0.03em;
+    }
+
+    .camera-overlay-line {
+      background: rgba(3, 16, 23, 0.8);
+      border: 1px solid rgba(78, 208, 255, 0.16);
+      color: var(--text);
+    }
+
+    .camera-alert {
+      background: rgba(74, 14, 14, 0.82);
+      border: 1px solid rgba(255, 122, 122, 0.28);
+      color: #ffd6d6;
+    }
+
+    .camera-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .crosshair-button {
+      padding: 9px 14px;
+      border: 1px solid rgba(78, 208, 255, 0.18);
+      border-radius: 12px;
+      background: rgba(3, 16, 23, 0.82);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.84rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 140ms ease, transform 140ms ease, color 140ms ease;
+    }
+
+    .crosshair-button:hover {
+      border-color: rgba(78, 208, 255, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .camera-adjust {
+      min-width: 220px;
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border: 1px solid rgba(78, 208, 255, 0.18);
+      border-radius: 12px;
+      background: rgba(3, 16, 23, 0.82);
+    }
+
+    .camera-adjust label,
+    .camera-adjust output {
+      color: var(--text);
+      font-size: 0.84rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .camera-adjust input[type="range"] {
+      flex: 1 1 auto;
+      min-width: 110px;
+      accent-color: var(--accent);
+    }
+
+    .placeholder {
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      text-align: center;
+      background:
+        linear-gradient(135deg, rgba(78, 208, 255, 0.08), rgba(255, 200, 87, 0.05)),
+        repeating-linear-gradient(
+          45deg,
+          transparent 0 14px,
+          rgba(255, 255, 255, 0.03) 14px 28px
+        );
+    }
+
+    .placeholder strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--warn);
+      font-size: 1rem;
+    }
+
+    #lidarCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 14px;
+      border: 1px solid rgba(78, 208, 255, 0.16);
+      background:
+        radial-gradient(circle at center, rgba(78, 208, 255, 0.06), rgba(0, 0, 0, 0.9));
+    }
+
+    .sensor-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-content: start;
+    }
+
+    .metric {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(2, 10, 15, 0.48);
+      border: 1px solid rgba(151, 184, 200, 0.12);
+    }
+
+    .metric-label {
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .metric-value {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .metric-value.small {
+      font-size: 0.92rem;
+      font-weight: 600;
+      word-break: break-word;
+    }
+
+    .metric.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .metric.is-hidden {
+      display: none;
+    }
+
+    .controls-section {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(151, 184, 200, 0.12);
+    }
+
+    .camera-controls-section {
+      margin-top: 0;
+      padding: 14px 12px 12px;
+      border-radius: 18px;
+      background: rgba(2, 10, 15, 0.42);
+      border: 1px solid rgba(78, 208, 255, 0.12);
+    }
+
+    .controls-heading {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .joystick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .power-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .power-card {
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(2, 10, 15, 0.48);
+      border: 1px solid rgba(151, 184, 200, 0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .power-title {
+      margin: 0;
+      font-size: 0.92rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .power-subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.8rem;
+      min-height: 2.4em;
+    }
+
+    .power-button {
+      padding: 12px 14px;
+      border: 1px solid rgba(78, 208, 255, 0.18);
+      border-radius: 12px;
+      background: rgba(3, 16, 23, 0.82);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 140ms ease, transform 140ms ease, background 140ms ease, color 140ms ease;
+    }
+
+    .power-button:hover:not(:disabled) {
+      border-color: rgba(78, 208, 255, 0.42);
+      transform: translateY(-1px);
+    }
+
+    .power-button.is-on {
+      background: rgba(34, 110, 68, 0.82);
+      border-color: rgba(124, 255, 124, 0.42);
+      color: #d7ffd7;
+    }
+
+    .power-button.is-danger.is-on {
+      background: rgba(122, 36, 36, 0.86);
+      border-color: rgba(255, 122, 122, 0.44);
+      color: #ffe0e0;
+    }
+
+    .power-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .power-status {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.8rem;
+      min-height: 1.2em;
+    }
+
+    .joystick-card {
+      padding: 12px;
+      border-radius: 16px;
+      background: rgba(2, 10, 15, 0.48);
+      border: 1px solid rgba(151, 184, 200, 0.12);
+    }
+
+    .joystick-title {
+      margin: 0 0 4px;
+      font-size: 0.92rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .joystick-subtitle {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .joystick-shell {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    .joystick-base {
+      position: relative;
+      width: min(100%, 200px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      border: 1px solid rgba(78, 208, 255, 0.18);
+      background:
+        radial-gradient(circle at 50% 45%, rgba(78, 208, 255, 0.18), rgba(7, 19, 26, 0.94) 68%),
+        linear-gradient(180deg, rgba(22, 54, 70, 0.85), rgba(3, 12, 18, 0.96));
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+        inset 0 20px 40px rgba(0, 0, 0, 0.24);
+      touch-action: none;
+      user-select: none;
+      cursor: grab;
+    }
+
+    .joystick-base.is-active {
+      border-color: rgba(78, 208, 255, 0.5);
+      box-shadow:
+        0 0 0 1px rgba(78, 208, 255, 0.12),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        inset 0 20px 40px rgba(0, 0, 0, 0.24);
+    }
+
+    .joystick-base::before,
+    .joystick-base::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      background: rgba(78, 208, 255, 0.16);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .joystick-base::before {
+      width: calc(100% - 36px);
+      height: 1px;
+    }
+
+    .joystick-base::after {
+      width: 1px;
+      height: calc(100% - 36px);
+    }
+
+    .joystick-ring {
+      position: absolute;
+      inset: 18%;
+      border-radius: 50%;
+      border: 1px dashed rgba(78, 208, 255, 0.18);
+      pointer-events: none;
+    }
+
+    .joystick-stick {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 34%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 30%, rgba(231, 245, 251, 0.92), rgba(78, 208, 255, 0.85) 42%, rgba(11, 52, 69, 0.95) 100%);
+      border: 1px solid rgba(231, 245, 251, 0.2);
+      box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      transform: translate(-50%, -50%);
+      transition: transform 90ms ease-out;
+      pointer-events: none;
+    }
+
+    .joystick-base.is-active .joystick-stick {
+      transition: none;
+    }
+
+    .joystick-readout {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.8rem;
+      text-align: center;
+      min-height: 2.4em;
+    }
+
+    .camera-panel {
+      grid-area: cameras;
+    }
+
+    .lidar-panel {
+      grid-area: lidar;
+    }
+
+    .sensor-panel {
+      grid-area: sensors;
+    }
+
+    .sensor-panel .panel-body {
+      overflow-y: auto;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        grid-template-areas:
+          "cameras"
+          "lidar"
+          "sensors";
+      }
+
+      .sensor-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .joystick-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .power-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .camera-cluster {
+        flex-direction: column;
+      }
+
+      :root {
+        --camera-preview-size: min(460px, calc(100vw - 110px));
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <h1>ROV Operations Dashboard</h1>
+      <div class="status-pill" id="connectionState">Connecting...</div>
+    </div>
+
+    <div class="grid">
+      <section class="panel camera-panel">
+        <h2>Camera Feeds</h2>
+        <div class="panel-body camera-panel-body">
+          <div class="camera-cluster">
+            <div class="camera-stack primary-camera">
+              <p class="camera-caption">Turret Camera</p>
+              <div class="camera-preview">
+                <img id="turretCamera" class="camera-frame" alt="Turret camera feed">
+                <div id="turretFallback" class="placeholder" hidden>
+                  <div>
+                    <strong>Camera Feed Unavailable</strong>
+                    Waiting for turret stream IP and camera service.
+                  </div>
+                </div>
+                <div class="crosshair" id="turretCrosshair">
+                  <div class="crosshair-line horizontal"></div>
+                  <div class="crosshair-line vertical"></div>
+                  <div class="crosshair-ring"></div>
+                </div>
+                <div class="camera-overlay">
+                  <p class="camera-overlay-line" id="turretOverlay">Range -- | Pan -- | Tilt --</p>
+                  <p class="camera-alert" id="turretAlert" hidden>Flags nominal</p>
+                </div>
+              </div>
+              <div class="camera-controls">
+                <button type="button" class="crosshair-button" id="crosshairToggle">
+                  Crosshair: Green
+                </button>
+                <div class="camera-adjust">
+                  <label for="brightnessSlider">Brightness</label>
+                  <input id="brightnessSlider" type="range" min="-2" max="2" step="1" value="0">
+                  <output id="brightnessValue" for="brightnessSlider">0</output>
+                </div>
+              </div>
+            </div>
+
+            <div class="camera-stack">
+              <p class="camera-caption">Chassis Camera</p>
+              <div class="camera-preview">
+                <div class="placeholder">
+                  <div>
+                    <strong>Placeholder</strong>
+                    Chassis camera not installed yet.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls-section camera-controls-section">
+            <p class="controls-heading">Virtual Controls</p>
+            <div class="power-grid">
+              <section class="power-card">
+                <h3 class="power-title">Motor Enable</h3>
+                <p class="power-subtitle">Controls relay K1 for motor enable power.</p>
+                <button type="button" class="power-button" id="motorEnableButton">Motor Enable Off</button>
+                <p class="power-status" id="motorEnableStatus">Unavailable</p>
+              </section>
+
+              <section class="power-card">
+                <h3 class="power-title">Battery Kill</h3>
+                <p class="power-subtitle">Controls relay K2 for battery kill power.</p>
+                <button type="button" class="power-button is-danger" id="batteryKillButton">Battery Kill Off</button>
+                <p class="power-status" id="batteryKillStatus">Unavailable</p>
+              </section>
+            </div>
+            <div class="joystick-grid">
+              <section class="joystick-card">
+                <h3 class="joystick-title">Drive</h3>
+                <p class="joystick-subtitle">Click or touch and hold to move the chassis.</p>
+                <div class="joystick-shell">
+                  <div class="joystick-base" id="driveJoystick" aria-label="Drive joystick">
+                    <div class="joystick-ring"></div>
+                    <div class="joystick-stick"></div>
+                  </div>
+                </div>
+                <p class="joystick-readout" id="driveReadout">Idle</p>
+              </section>
+
+              <section class="joystick-card">
+                <h3 class="joystick-title">Turret</h3>
+                <p class="joystick-subtitle">Click or touch and hold to pan and tilt continuously.</p>
+                <div class="joystick-shell">
+                  <div class="joystick-base" id="turretJoystick" aria-label="Turret joystick">
+                    <div class="joystick-ring"></div>
+                    <div class="joystick-stick"></div>
+                  </div>
+                </div>
+                <p class="joystick-readout" id="turretReadout">Idle</p>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel lidar-panel">
+        <h2>LiDAR Polar Heatmap</h2>
+        <div class="panel-body">
+          <canvas id="lidarCanvas" width="1600" height="1000"></canvas>
+        </div>
+      </section>
+
+      <section class="panel sensor-panel">
+        <h2>Sensor Data</h2>
+        <div class="panel-body">
+          <div class="sensor-grid">
+            <div class="metric">
+              <p class="metric-label">Range</p>
+              <p class="metric-value" id="rangeValue">--</p>
+            </div>
+            <div class="metric">
+              <p class="metric-label">Front Ultrasonic</p>
+              <p class="metric-value" id="frontUltrasonicValue">--</p>
+            </div>
+            <div class="metric">
+              <p class="metric-label">Rear Ultrasonic</p>
+              <p class="metric-value" id="rearUltrasonicValue">--</p>
+            </div>
+            <div class="metric full-width is-hidden" id="flagMetric">
+              <p class="metric-label">Turret Alert</p>
+              <p class="metric-value small" id="flagsValue">No alerts</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const cameraImg = document.getElementById("turretCamera");
+    const cameraFallback = document.getElementById("turretFallback");
+    const connectionState = document.getElementById("connectionState");
+    const turretOverlay = document.getElementById("turretOverlay");
+    const turretAlert = document.getElementById("turretAlert");
+    const flagMetric = document.getElementById("flagMetric");
+    const turretCrosshair = document.getElementById("turretCrosshair");
+    const crosshairToggle = document.getElementById("crosshairToggle");
+    const brightnessSlider = document.getElementById("brightnessSlider");
+    const brightnessValue = document.getElementById("brightnessValue");
+    const lidarCanvas = document.getElementById("lidarCanvas");
+    const lidarCtx = lidarCanvas.getContext("2d");
+    const driveJoystick = document.getElementById("driveJoystick");
+    const turretJoystick = document.getElementById("turretJoystick");
+    const driveReadout = document.getElementById("driveReadout");
+    const turretReadout = document.getElementById("turretReadout");
+    const motorEnableButton = document.getElementById("motorEnableButton");
+    const motorEnableStatus = document.getElementById("motorEnableStatus");
+    const batteryKillButton = document.getElementById("batteryKillButton");
+    const batteryKillStatus = document.getElementById("batteryKillStatus");
+    const TARGET_FRAME_MS = 1000 / 60;
+    const STATUS_REFRESH_MS = 500;
+    const DRIVE_COMMAND_MS = 90;
+    const DRIVE_DEADZONE = 0.12;
+    const TURRET_COMMAND_MS = 180;
+    const TURRET_STEP_MAX = 12;
+    const TURRET_DEADZONE = 0.24;
+    const CROSSHAIR_STORAGE_KEY = "rovCrosshairColor";
+    const LIDAR_DISPLAY_OFFSET_DEG = 80;
+    const CROSSHAIR_COLORS = {
+      green: "#7cff7c",
+      red: "#ff5d5d",
+    };
+
+    let lidarRefreshInFlight = false;
+    let statusRefreshInFlight = false;
+    let lastLidarRefreshStartedAt = 0;
+    let lastStatusRefreshStartedAt = 0;
+    let crosshairColor = "green";
+    let driveCommandInFlight = false;
+    let turretCommandInFlight = false;
+    let driveStopSent = true;
+    let brightnessSyncLocked = false;
+    let relayCommandInFlight = false;
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function setBrightnessUi(value) {
+      const normalized = Math.max(-2, Math.min(2, Number(value) || 0));
+      brightnessSlider.value = String(normalized);
+      brightnessValue.textContent = String(normalized);
+    }
+
+    function updateRelayCard(button, statusNode, relay, label) {
+      const configured = relay?.configured !== false;
+      const available = relay?.available === true;
+      const enabled = relay?.enabled === true;
+      button.disabled = !available || relayCommandInFlight;
+      button.classList.toggle("is-on", enabled);
+      button.textContent = `${label} ${enabled ? "On" : "Off"}`;
+
+      if (!configured) {
+        statusNode.textContent = "Not configured";
+      } else if (!available) {
+        statusNode.textContent = relay?.last_error || "Unavailable";
+      } else {
+        statusNode.textContent = enabled ? "Relay energized" : "Relay idle";
+      }
+    }
+
+    function applyCrosshairColor(colorName) {
+      const nextColor = CROSSHAIR_COLORS[colorName] ? colorName : "green";
+      crosshairColor = nextColor;
+      turretCrosshair.style.setProperty("--crosshair-color", CROSSHAIR_COLORS[nextColor]);
+      crosshairToggle.textContent = `Crosshair: ${nextColor === "green" ? "Green" : "Red"}`;
+      try {
+        window.localStorage.setItem(CROSSHAIR_STORAGE_KEY, nextColor);
+      } catch (error) {
+      }
+    }
+
+    function initializeCrosshairColor() {
+      let stored = "green";
+      try {
+        stored = window.localStorage.getItem(CROSSHAIR_STORAGE_KEY) || "green";
+      } catch (error) {
+      }
+      applyCrosshairColor(stored);
+    }
+
+    function formatDegrees(value) {
+      return value != null ? `${value.toFixed(1)} deg` : "--";
+    }
+
+    function formatRange(value) {
+      return value != null ? `${value.toFixed(1)} in` : "--";
+    }
+
+    function formatPiUltrasonic(sensor) {
+      if (!sensor || sensor.configured === false) {
+        return "Not wired";
+      }
+      if (sensor.ok && sensor.distance_in != null) {
+        return `${sensor.distance_in.toFixed(1)} in`;
+      }
+      return sensor.status || "--";
+    }
+
+    function setTurretOverlay(data) {
+      const range = formatRange(data.turret_telemetry?.range_in);
+      const pan = formatDegrees(data.turret_state?.pan_deg);
+      const tilt = formatDegrees(data.turret_state?.tilt_deg);
+      turretOverlay.textContent = `Range ${range} | Pan ${pan} | Tilt ${tilt}`;
+    }
+
+    function getTurretAlert(data) {
+      const telemetry = data.turret_telemetry || {};
+      const servoStatus = data.servo_status || {};
+      const issues = [];
+
+      if (telemetry.parse_error) {
+        issues.push("telemetry parse error");
+      }
+      if (telemetry.flags == null || telemetry.flags === "") {
+        issues.push("flags unavailable");
+      } else {
+        if (telemetry.camera_ok === false) issues.push("camera fault");
+        if (telemetry.accel_ok === false) issues.push("accelerometer fault");
+        if (telemetry.ultrasonic_ok === false) issues.push("range sensor fault");
+        if (telemetry.wifi_ok === false) issues.push("wifi fault");
+      }
+      if (servoStatus.last_error) {
+        issues.push(`servo link error: ${servoStatus.last_error}`);
+      }
+
+      return issues.join(" | ");
+    }
+
+    function updateTurretAlert(data) {
+      const alertText = getTurretAlert(data);
+      const hasAlert = alertText.length > 0;
+
+      turretAlert.hidden = !hasAlert;
+      flagMetric.classList.toggle("is-hidden", !hasAlert);
+
+      if (hasAlert) {
+        turretAlert.textContent = alertText;
+        setText("flagsValue", alertText);
+      } else {
+        setText("flagsValue", "No alerts");
+      }
+    }
+
+    function updateTurretCamera(streamUrl) {
+      if (!streamUrl) {
+        cameraImg.hidden = true;
+        cameraFallback.hidden = false;
+        return;
+      }
+
+      if (cameraImg.src !== streamUrl) {
+        cameraImg.src = streamUrl;
+      }
+
+      cameraImg.hidden = false;
+      cameraFallback.hidden = true;
+    }
+
+    async function setTurretBrightness(value) {
+      const normalized = Math.max(-2, Math.min(2, Number(value) || 0));
+      brightnessSyncLocked = true;
+      setBrightnessUi(normalized);
+
+      try {
+        const response = await fetch("/api/turret/camera/brightness", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ brightness: normalized }),
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || "brightness update failed");
+        }
+        setBrightnessUi(payload.turret_camera?.brightness ?? normalized);
+      } catch (error) {
+        turretAlert.hidden = false;
+        turretAlert.textContent = `Camera brightness update failed: ${error.message}`;
+      } finally {
+        brightnessSyncLocked = false;
+      }
+    }
+
+    async function setRelayState(path, enabled) {
+      relayCommandInFlight = true;
+      try {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ enabled }),
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || "relay update failed");
+        }
+        updateRelayCard(motorEnableButton, motorEnableStatus, payload.relay_status?.motor_enable, "Motor Enable");
+        updateRelayCard(batteryKillButton, batteryKillStatus, payload.relay_status?.battery_kill, "Battery Kill");
+      } catch (error) {
+        turretAlert.hidden = false;
+        turretAlert.textContent = `Relay update failed: ${error.message}`;
+      } finally {
+        relayCommandInFlight = false;
+      }
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function formatSignedPercent(value) {
+      return `${value >= 0 ? "+" : ""}${Math.round(value * 100)}%`;
+    }
+
+    function createJoystick(base, readout, labels) {
+      const stick = base.querySelector(".joystick-stick");
+      const state = {
+        active: false,
+        pointerId: null,
+        x: 0,
+        y: 0,
+        maxTravel: 0,
+      };
+
+      function syncMetrics() {
+        state.maxTravel = Math.max(24, (base.clientWidth * 0.5) - (stick.clientWidth * 0.5) - 14);
+      }
+
+      function updateReadout() {
+        if (!state.active && Math.abs(state.x) < 0.001 && Math.abs(state.y) < 0.001) {
+          readout.textContent = "Idle";
+          return;
+        }
+
+        readout.textContent = `${labels.x}: ${formatSignedPercent(state.x)} | ${labels.y}: ${formatSignedPercent(-state.y)}`;
+      }
+
+      function renderStick() {
+        stick.style.transform = `translate(calc(-50% + ${state.x * state.maxTravel}px), calc(-50% + ${state.y * state.maxTravel}px))`;
+        base.classList.toggle("is-active", state.active);
+        updateReadout();
+      }
+
+      function setVector(nextX, nextY) {
+        const magnitude = Math.hypot(nextX, nextY);
+        if (magnitude > 1) {
+          state.x = nextX / magnitude;
+          state.y = nextY / magnitude;
+        } else {
+          state.x = nextX;
+          state.y = nextY;
+        }
+        renderStick();
+      }
+
+      function setFromPointer(clientX, clientY) {
+        const rect = base.getBoundingClientRect();
+        const relativeX = clientX - rect.left - (rect.width / 2);
+        const relativeY = clientY - rect.top - (rect.height / 2);
+        const travel = state.maxTravel || 1;
+        setVector(relativeX / travel, relativeY / travel);
+      }
+
+      function reset() {
+        state.active = false;
+        state.pointerId = null;
+        state.x = 0;
+        state.y = 0;
+        renderStick();
+      }
+
+      base.addEventListener("pointerdown", (event) => {
+        syncMetrics();
+        state.active = true;
+        state.pointerId = event.pointerId;
+        base.setPointerCapture(event.pointerId);
+        setFromPointer(event.clientX, event.clientY);
+        event.preventDefault();
+      });
+
+      base.addEventListener("pointermove", (event) => {
+        if (!state.active || event.pointerId !== state.pointerId) {
+          return;
+        }
+        setFromPointer(event.clientX, event.clientY);
+      });
+
+      function release(event) {
+        if (state.pointerId !== null && event.pointerId !== state.pointerId) {
+          return;
+        }
+        reset();
+      }
+
+      base.addEventListener("pointerup", release);
+      base.addEventListener("pointercancel", release);
+      base.addEventListener("lostpointercapture", () => {
+        if (state.active) {
+          reset();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        syncMetrics();
+        renderStick();
+      });
+
+      syncMetrics();
+      renderStick();
+      return state;
+    }
+
+    const driveState = createJoystick(driveJoystick, driveReadout, {
+      x: "Turn",
+      y: "Throttle",
+    });
+    const turretControlState = createJoystick(turretJoystick, turretReadout, {
+      x: "Pan",
+      y: "Tilt",
+    });
+
+    function getDriveCommand() {
+      const throttleAxis = Math.abs(driveState.y) >= DRIVE_DEADZONE ? -driveState.y : 0;
+      const turnAxis = Math.abs(driveState.x) >= DRIVE_DEADZONE ? driveState.x : 0;
+      return {
+        throttle: Math.round(clamp(throttleAxis, -1, 1) * 255),
+        turn: Math.round(clamp(turnAxis, -1, 1) * 255),
+      };
+    }
+
+    function getTurretCommand() {
+      const panAxis = Math.abs(turretControlState.x) >= TURRET_DEADZONE ? turretControlState.x : 0;
+      const tiltAxis = Math.abs(turretControlState.y) >= TURRET_DEADZONE ? turretControlState.y : 0;
+      return {
+        pan_delta: Math.round(clamp(panAxis, -1, 1) * TURRET_STEP_MAX),
+        tilt_delta: Math.round(clamp(tiltAxis, -1, 1) * TURRET_STEP_MAX),
+      };
+    }
+
+    async function sendDriveStop() {
+      try {
+        await fetch("/api/drive/stop", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+      } catch (error) {
+      }
+    }
+
+    async function pumpDriveJoystick() {
+      if (driveCommandInFlight) {
+        return;
+      }
+
+      const command = getDriveCommand();
+      driveCommandInFlight = true;
+      try {
+        if (!driveState.active && command.throttle === 0 && command.turn === 0) {
+          if (driveStopSent) {
+            return;
+          }
+          await sendDriveStop();
+          driveStopSent = true;
+          return;
+        }
+
+        await fetch("/api/drive/joy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(command),
+        });
+        driveStopSent = false;
+      } catch (error) {
+      } finally {
+        driveCommandInFlight = false;
+      }
+    }
+
+    async function pumpTurretJoystick() {
+      if (turretCommandInFlight) {
+        return;
+      }
+
+      const command = getTurretCommand();
+      if (command.pan_delta === 0 && command.tilt_delta === 0) {
+        return;
+      }
+
+      turretCommandInFlight = true;
+      try {
+        const response = await fetch("/api/turret/aim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...command,
+            time_ms: TURRET_COMMAND_MS,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok || payload?.ok === false || payload?.error) {
+          const message = payload?.error || "turret command failed";
+          turretReadout.textContent = `Turret error: ${message}`;
+          turretAlert.hidden = false;
+          turretAlert.textContent = message;
+          flagMetric.classList.remove("is-hidden");
+          setText("flagsValue", message);
+          return;
+        }
+        if (payload?.turret_state) {
+          turretOverlay.textContent = `Range ${document.getElementById("rangeValue").textContent} | Pan ${formatDegrees(payload.turret_state.pan_deg)} | Tilt ${formatDegrees(payload.turret_state.tilt_deg)}`;
+        }
+      } catch (error) {
+        const message = error?.message || "turret command failed";
+        turretReadout.textContent = `Turret error: ${message}`;
+      } finally {
+        turretCommandInFlight = false;
+      }
+    }
+
+    function drawLidar(points = [], maxRangeMm = 5000) {
+      const { width, height } = lidarCanvas;
+      const cx = width / 2;
+      const cy = height / 2;
+      const angleBins = 960;
+      const rangeBins = 192;
+      const wedgeWidth = (Math.PI * 2) / angleBins;
+      const heat = new Float32Array(angleBins * rangeBins);
+      const latestByAngle = new Array(angleBins).fill(null);
+
+      lidarCtx.clearRect(0, 0, width, height);
+      lidarCtx.fillStyle = "#031017";
+      lidarCtx.fillRect(0, 0, width, height);
+
+      for (const point of points.slice(-10400)) {
+        const rotatedAngleDeg = ((point.angle_deg ?? 0) + LIDAR_DISPLAY_OFFSET_DEG + 360) % 360;
+        const bin = Math.floor((rotatedAngleDeg / 360) * angleBins);
+        const existing = latestByAngle[bin];
+        if (!existing || point.distance_mm < existing.distance_mm) {
+          latestByAngle[bin] = {
+            ...point,
+            rotated_angle_deg: rotatedAngleDeg,
+          };
+        }
+      }
+
+      const filteredPoints = [];
+      for (let i = 0; i < angleBins; i += 1) {
+        const current = latestByAngle[i];
+        if (!current) {
+          continue;
+        }
+
+        let sum = current.distance_mm;
+        let count = 1;
+
+        for (const neighborOffset of [-1, 1]) {
+          const neighbor = latestByAngle[(i + neighborOffset + angleBins) % angleBins];
+          if (!neighbor) {
+            continue;
+          }
+          if (Math.abs(neighbor.distance_mm - current.distance_mm) <= 140) {
+            sum += neighbor.distance_mm;
+            count += 1;
+          }
+        }
+
+        const distanceMm = sum / count;
+        const angleRad = (current.rotated_angle_deg * Math.PI) / 180;
+        filteredPoints.push({
+          angle_deg: current.rotated_angle_deg,
+          distance_mm: distanceMm,
+          x: distanceMm * Math.cos(angleRad),
+          y: distanceMm * Math.sin(angleRad),
+        });
+      }
+
+      const sortedDistances = filteredPoints
+        .map((point) => point.distance_mm)
+        .filter((distance) => Number.isFinite(distance))
+        .sort((a, b) => a - b);
+      const percentileIndex = sortedDistances.length > 0
+        ? Math.min(sortedDistances.length - 1, Math.floor(sortedDistances.length * 0.92))
+        : 0;
+      const percentileDistance = sortedDistances[percentileIndex] || maxRangeMm;
+      const displayRangeMm = clamp(percentileDistance * 1.25, 400, Math.min(maxRangeMm, 1800));
+      const scale = Math.min(width, height) * 0.42 / displayRangeMm;
+
+      for (const point of filteredPoints) {
+        const normalizedRange = clamp(point.distance_mm / displayRangeMm, 0, 0.999);
+        const bin = Math.floor((((point.angle_deg ?? 0) % 360) / 360) * angleBins);
+        const rangeBin = Math.floor(normalizedRange * rangeBins);
+        const index = (bin * rangeBins) + rangeBin;
+        heat[index] += 1.4;
+
+        if (rangeBin + 1 < rangeBins) {
+          heat[index + 1] += 0.4;
+        }
+        if (rangeBin > 0) {
+          heat[index - 1] += 0.28;
+        }
+      }
+
+      for (let angleIndex = 0; angleIndex < angleBins; angleIndex += 1) {
+        for (let rangeIndex = 0; rangeIndex < rangeBins; rangeIndex += 1) {
+          const intensity = heat[(angleIndex * rangeBins) + rangeIndex];
+          if (intensity <= 0.12) {
+            continue;
+          }
+
+          const alpha = clamp(intensity / 3.6, 0.04, 0.78);
+          const glow = clamp(intensity / 4.8, 0, 1);
+          const innerRadius = (rangeIndex / rangeBins) * displayRangeMm * scale;
+          const outerRadius = ((rangeIndex + 1) / rangeBins) * displayRangeMm * scale;
+          const startAngle = (angleIndex / angleBins) * Math.PI * 2;
+          const endAngle = startAngle + wedgeWidth;
+
+          lidarCtx.beginPath();
+          lidarCtx.moveTo(cx, cy);
+          lidarCtx.arc(cx, cy, outerRadius, startAngle, endAngle);
+          lidarCtx.arc(cx, cy, innerRadius, endAngle, startAngle, true);
+          lidarCtx.closePath();
+          lidarCtx.fillStyle = `rgba(${Math.round(40 + (38 * glow))}, ${Math.round(58 + (150 * glow))}, ${Math.round(72 + (183 * glow))}, ${alpha})`;
+          lidarCtx.fill();
+        }
+      }
+
+      lidarCtx.strokeStyle = "rgba(78, 208, 255, 0.18)";
+      lidarCtx.lineWidth = 2;
+      for (let i = 1; i <= 4; i += 1) {
+        lidarCtx.beginPath();
+        lidarCtx.arc(cx, cy, (displayRangeMm / 4) * i * scale, 0, Math.PI * 2);
+        lidarCtx.stroke();
+      }
+
+      lidarCtx.beginPath();
+      lidarCtx.moveTo(cx, 10);
+      lidarCtx.lineTo(cx, height - 10);
+      lidarCtx.moveTo(10, cy);
+      lidarCtx.lineTo(width - 10, cy);
+      lidarCtx.stroke();
+
+      lidarCtx.fillStyle = "rgba(238, 180, 255, 0.95)";
+      for (const point of filteredPoints) {
+        const x = cx + point.x * scale;
+        const y = cy - point.y * scale;
+        lidarCtx.fillRect(x - 2, y - 2, 4, 4);
+      }
+
+      lidarCtx.fillStyle = "#ffc857";
+      lidarCtx.beginPath();
+      lidarCtx.arc(cx, cy, 6, 0, Math.PI * 2);
+      lidarCtx.fill();
+
+      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.82)";
+      lidarCtx.font = '24px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.fillText("far / low return", 16, height - 18);
+      lidarCtx.fillStyle = "rgba(236, 114, 255, 0.9)";
+      lidarCtx.fillText("near / strong return", 136, height - 18);
+      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.7)";
+      lidarCtx.fillText(`view ${(displayRangeMm / 1000).toFixed(1)} m`, width - 190, 36);
+
+      lidarCtx.fillStyle = "rgba(58, 114, 132, 0.95)";
+      lidarCtx.fillRect(16, height - 48, 36, 16);
+      lidarCtx.fillStyle = "rgba(236, 114, 255, 0.95)";
+      lidarCtx.fillRect(136, height - 48, 36, 16);
+    }
+
+    function setOfflineState() {
+      connectionState.textContent = "Backend Offline";
+      connectionState.style.color = "#ffc857";
+      updateTurretCamera(null);
+      turretOverlay.textContent = "Range -- | Pan -- | Tilt --";
+      turretAlert.hidden = false;
+      turretAlert.textContent = "backend offline";
+      flagMetric.classList.remove("is-hidden");
+      setText("flagsValue", "backend offline");
+      setText("frontUltrasonicValue", "--");
+      setText("rearUltrasonicValue", "--");
+      updateRelayCard(motorEnableButton, motorEnableStatus, null, "Motor Enable");
+      updateRelayCard(batteryKillButton, batteryKillStatus, null, "Battery Kill");
+    }
+
+    function setOnlineState() {
+      connectionState.textContent = "Backend Online";
+      connectionState.style.color = "#4ed0ff";
+    }
+
+    async function refreshStatus() {
+      if (statusRefreshInFlight) {
+        return;
+      }
+
+      statusRefreshInFlight = true;
+      lastStatusRefreshStartedAt = performance.now();
+
+      try {
+        const response = await fetch("/api/dashboard", { cache: "no-store" });
+        const data = await response.json();
+
+        setOnlineState();
+        updateTurretCamera(data.turret_stream_url);
+        if (!brightnessSyncLocked) {
+          setBrightnessUi(data.turret_camera?.brightness ?? 0);
+        }
+        setTurretOverlay(data);
+        updateTurretAlert(data);
+        setText("rangeValue", formatRange(data.turret_telemetry?.range_in));
+        setText("frontUltrasonicValue", formatPiUltrasonic(data.pi_ultrasonic?.front));
+        setText("rearUltrasonicValue", formatPiUltrasonic(data.pi_ultrasonic?.rear));
+        updateRelayCard(motorEnableButton, motorEnableStatus, data.relay_status?.motor_enable, "Motor Enable");
+        updateRelayCard(batteryKillButton, batteryKillStatus, data.relay_status?.battery_kill, "Battery Kill");
+      } catch (error) {
+        setOfflineState();
+      } finally {
+        statusRefreshInFlight = false;
+      }
+    }
+
+    async function refreshLidar() {
+      if (lidarRefreshInFlight) {
+        return;
+      }
+
+      lidarRefreshInFlight = true;
+      lastLidarRefreshStartedAt = performance.now();
+
+      try {
+        const response = await fetch("/api/lidar", { cache: "no-store" });
+        const data = await response.json();
+
+        setOnlineState();
+        drawLidar(data.points || [], data.max_range_mm || 5000);
+      } catch (error) {
+        setOfflineState();
+      } finally {
+        lidarRefreshInFlight = false;
+      }
+    }
+
+    function animationLoop(now) {
+      if (!lidarRefreshInFlight && now - lastLidarRefreshStartedAt >= TARGET_FRAME_MS) {
+        refreshLidar();
+      }
+
+      if (!statusRefreshInFlight && now - lastStatusRefreshStartedAt >= STATUS_REFRESH_MS) {
+        refreshStatus();
+      }
+
+      window.requestAnimationFrame(animationLoop);
+    }
+
+    cameraImg.addEventListener("error", () => {
+      cameraImg.hidden = true;
+      cameraFallback.hidden = false;
+    });
+
+    brightnessSlider.addEventListener("input", () => {
+      setBrightnessUi(brightnessSlider.value);
+    });
+
+    brightnessSlider.addEventListener("change", () => {
+      setTurretBrightness(brightnessSlider.value);
+    });
+
+    motorEnableButton.addEventListener("click", () => {
+      const nextEnabled = !motorEnableButton.classList.contains("is-on");
+      setRelayState("/api/power/motor_enable", nextEnabled);
+    });
+
+    batteryKillButton.addEventListener("click", () => {
+      const nextEnabled = !batteryKillButton.classList.contains("is-on");
+      setRelayState("/api/power/battery_kill", nextEnabled);
+    });
+
+    crosshairToggle.addEventListener("click", () => {
+      applyCrosshairColor(crosshairColor === "green" ? "red" : "green");
+    });
+
+    initializeCrosshairColor();
+    setBrightnessUi(0);
+    window.setInterval(pumpDriveJoystick, DRIVE_COMMAND_MS);
+    window.setInterval(pumpTurretJoystick, TURRET_COMMAND_MS);
+    refreshStatus();
+    refreshLidar();
+    window.requestAnimationFrame(animationLoop);
+  </script>
+</body>
+</html>
