@@ -1,2 +1,25 @@
 __pycache__/
 *.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Logs and local runtime files
+*.log
+
+# Build outputs
+build/
+dist/
