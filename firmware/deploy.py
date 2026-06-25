@@ -211,21 +211,14 @@ def target_mode(mode: str, target: str) -> str:
     return mode
 
 
-def matching_ports(patterns: list[str]) -> list[str]:
-    matches: list[str] = []
-    for pattern in patterns:
-        for match in sorted(glob.glob(pattern)):
-            if match not in matches:
-                matches.append(match)
-    return matches
-
-
 def find_port(target: str, patterns: list[str]) -> str:
-    matches = matching_ports(patterns)
-    if matches:
-        return matches[0]
+    checked: list[str] = []
+    for pattern in patterns:
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            return matches[0]
+        checked.append(pattern)
 
-    checked = list(patterns)
     checked_lines = "\n".join(f"  {item}" for item in checked)
     raise SystemExit(f"No serial port found for target `{target}`.\nChecked:\n{checked_lines}")
 
@@ -281,22 +274,13 @@ def touch_serial_1200bps(port: str) -> None:
         print(f"[touch1200] Warning: explicit 1200 bps reset failed: {exc}")
 
 
-def wait_for_ports_to_clear(patterns: list[str], timeout_s: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if not matching_ports(patterns):
-            return
-        time.sleep(0.25)
-
-    print("[serial] Warning: port did not disappear before timeout; continuing")
-
-
 def wait_for_port(patterns: list[str], timeout_s: float = 10.0) -> str:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        matches = matching_ports(patterns)
-        if matches:
-            return matches[0]
+        for pattern in patterns:
+            matches = sorted(glob.glob(pattern))
+            if matches:
+                return matches[0]
         time.sleep(0.25)
     return find_port("reappearing-device", patterns)
 
@@ -391,7 +375,7 @@ def deploy_target(mode: str, target: str) -> None:
 
             if board.get("touch_1200bps"):
                 touch_serial_1200bps(port)
-                wait_for_ports_to_clear(board["ports"])
+                time.sleep(2.5)
                 port = wait_for_port(board["ports"])
                 print(f"Bootloader/serial port ready for {board['name']}: {port}")
 
@@ -405,7 +389,7 @@ def deploy_target(mode: str, target: str) -> None:
                     run_command(rc, f"reset:{board['name']}")
 
                 # Give the device a moment to reset and re-enumerate, then wait for the port.
-                wait_for_ports_to_clear(board["ports"])
+                time.sleep(0.25)
                 port = wait_for_port(board["ports"], timeout_s=10.0)
                 print(f"Reset/toggle complete, device ready for {board['name']}: {port}")
 
