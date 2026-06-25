@@ -682,10 +682,11 @@
             <div class="camera-stack">
               <p class="camera-caption">Chassis Camera</p>
               <div class="camera-preview">
-                <div class="placeholder">
+                <img id="chassisCamera" class="camera-frame" alt="Chassis camera feed" hidden>
+                <div id="chassisFallback" class="placeholder">
                   <div>
-                    <strong>Placeholder</strong>
-                    Chassis camera not installed yet.
+                    <strong>Camera Feed Unavailable</strong>
+                    Waiting for chassis CSI camera service.
                   </div>
                 </div>
               </div>
@@ -774,6 +775,8 @@
   <script>
     const cameraImg = document.getElementById("turretCamera");
     const cameraFallback = document.getElementById("turretFallback");
+    const chassisCameraImg = document.getElementById("chassisCamera");
+    const chassisCameraFallback = document.getElementById("chassisFallback");
     const connectionState = document.getElementById("connectionState");
     const turretOverlay = document.getElementById("turretOverlay");
     const turretAlert = document.getElementById("turretAlert");
@@ -940,6 +943,23 @@
 
       cameraImg.hidden = false;
       cameraFallback.hidden = true;
+    }
+
+    function updateChassisCamera(cameraStatus) {
+      const streamUrl = cameraStatus?.stream_url;
+      if (!cameraStatus?.enabled || !streamUrl) {
+        chassisCameraImg.hidden = true;
+        chassisCameraFallback.hidden = false;
+        return;
+      }
+
+      const resolvedStreamUrl = new URL(streamUrl, window.location.href).href;
+      if (chassisCameraImg.src !== resolvedStreamUrl) {
+        chassisCameraImg.src = resolvedStreamUrl;
+      }
+
+      chassisCameraImg.hidden = false;
+      chassisCameraFallback.hidden = true;
     }
 
     async function setTurretBrightness(value) {
@@ -1388,6 +1408,7 @@
 
         setOnlineState();
         updateTurretCamera(data.turret_stream_url);
+        updateChassisCamera(data.chassis_camera);
         if (!brightnessSyncLocked) {
           setBrightnessUi(data.turret_camera?.brightness ?? 0);
         }
@@ -1441,6 +1462,11 @@
     cameraImg.addEventListener("error", () => {
       cameraImg.hidden = true;
       cameraFallback.hidden = false;
+    });
+
+    chassisCameraImg.addEventListener("error", () => {
+      chassisCameraImg.hidden = true;
+      chassisCameraFallback.hidden = false;
     });
 
     brightnessSlider.addEventListener("input", () => {

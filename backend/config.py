@@ -12,6 +12,33 @@ SERVO_BAUD = 115200
 HTTP_HOST = "0.0.0.0"
 HTTP_PORT = 8080
 
+# Rock 3C CSI chassis camera. The backend tries these commands in order and
+# proxies the MJPEG frames to the dashboard.
+CHASSIS_CAMERA_ENABLED = True
+CHASSIS_CAMERA_WIDTH = 1280
+CHASSIS_CAMERA_HEIGHT = 720
+CHASSIS_CAMERA_FPS = 15
+CHASSIS_CAMERA_COMMANDS = [
+    [
+        "rpicam-vid",
+        "-t", "0",
+        "--codec", "mjpeg",
+        "--width", str(CHASSIS_CAMERA_WIDTH),
+        "--height", str(CHASSIS_CAMERA_HEIGHT),
+        "--framerate", str(CHASSIS_CAMERA_FPS),
+        "-o", "-",
+    ],
+    [
+        "libcamera-vid",
+        "-t", "0",
+        "--codec", "mjpeg",
+        "--width", str(CHASSIS_CAMERA_WIDTH),
+        "--height", str(CHASSIS_CAMERA_HEIGHT),
+        "--framerate", str(CHASSIS_CAMERA_FPS),
+        "-o", "-",
+    ],
+]
+
 # Pi-side ultrasonic sensors.
 # Leave any line as None until the wiring is confirmed.
 # These use libgpiod chip names and line offsets, not BCM pin numbers.

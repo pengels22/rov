@@ -10,6 +10,7 @@ It talks to:
 - `/dev/rov/lidar` — LiDAR UART
 
 Only external Python dependency is `pyserial`, which is already installed on the ROV.
+The chassis CSI camera stream uses `rpicam-vid` or `libcamera-vid` when present.
 
 Pi-side ultrasonics use the system `gpiomon`/`gpioset` tools if you configure
 their chip/line values in [config.py](/home/pi/ROV/backend/config.py:11).

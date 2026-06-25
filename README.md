@@ -32,6 +32,7 @@ Pi-side runtime:
 - Python 3
 - `pyserial`
 - `libgpiod` tools such as `gpiomon` and `gpioset` for GPIO-backed relays and ultrasonics
+- `rpicam-vid` or `libcamera-vid` for the Rock 3C CSI chassis camera stream
 
 Firmware deployment:
 
@@ -51,6 +52,8 @@ Before running on different hardware, review at least:
 - `TURRET_PORT`
 - `TURRET_SERVO_PORT`
 - `LIDAR_PORT`
+- `CHASSIS_CAMERA_ENABLED`
+- `CHASSIS_CAMERA_COMMANDS`
 - `HTTP_HOST`
 - `HTTP_PORT`
 - ultrasonic chip and line values
@@ -152,6 +155,8 @@ Notes:
 - `GET /api/servo/status`
 - `POST /api/servo/move`
 - `POST /api/servo/center`
+- `GET /api/chassis/camera/status`
+- `GET /api/chassis/camera/stream`
 
 ## Project Notes
 

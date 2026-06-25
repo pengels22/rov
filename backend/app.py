@@ -22,6 +22,7 @@ from servo_backend import ServoController
 from relay_output import RelayController
 from turret_state import TurretState
 from ultrasonic import PiUltrasonicService
+from chassis_camera import ChassisCameraService
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
@@ -35,6 +36,7 @@ relays = RelayController()
 turret_state = TurretState()
 lidar = LidarService()
 ultrasonic = PiUltrasonicService()
+chassis_camera = ChassisCameraService()
 
 
 def ok(data=None, status=200):
@@ -119,6 +121,7 @@ def system_status():
         "turret_camera": {
             "brightness": turret.camera_brightness,
         },
+        "chassis_camera": chassis_camera.status(),
         "pi_ultrasonic": ultrasonic.snapshot(),
         "lidar": lidar.snapshot(),
         "last": {
@@ -150,6 +153,8 @@ def system_status():
             "POST /api/servo/move",
             "POST /api/servo/center",
             "POST /api/turret/mark_pan_home",
+            "GET /api/chassis/camera/status",
+            "GET /api/chassis/camera/stream",
         ],
     }
     return out
@@ -246,6 +251,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             path = urlparse(self.path).path
+            if path == "/api/chassis/camera/stream":
+                self._send_chassis_camera_stream()
+                return
+
             status, payload, content_type = self.route_get(path)
             if content_type == "html":
                 self._send_html(status, payload)
@@ -257,6 +266,34 @@ class Handler(BaseHTTPRequestHandler):
                 "error": str(e),
                 "trace": traceback.format_exc(),
             })
+
+    def _send_chassis_camera_stream(self):
+        if not chassis_camera.enabled:
+            self._send_json(503, {"ok": False, "error": "chassis camera disabled"})
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        last_frame_id = 0
+        while True:
+            frame, frame_id = chassis_camera.wait_for_frame(last_frame_id)
+            if not frame or frame_id == last_frame_id:
+                continue
+
+            last_frame_id = frame_id
+            try:
+                self.wfile.write(b"--frame\r\n")
+                self.wfile.write(b"Content-Type: image/jpeg\r\n")
+                self.wfile.write(f"Content-Length: {len(frame)}\r\n\r\n".encode("ascii"))
+                self.wfile.write(frame)
+                self.wfile.write(b"\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
 
     def do_POST(self):
         try:
@@ -319,6 +356,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/lidar":
             status, payload = ok(lidar.snapshot())
+            return status, payload, "json"
+
+        if path == "/api/chassis/camera/status":
+            status, payload = ok(chassis_camera.status())
             return status, payload, "json"
 
         status, payload = err("not found", 404)
@@ -430,6 +471,7 @@ def main():
     args = parser.parse_args()
 
     lidar.start()
+    chassis_camera.start()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"ROV backend listening on http://{args.host}:{args.port}")
     print("Using devices:")
@@ -437,6 +479,7 @@ def main():
     print(f"  turret: {TURRET_PORT} @ {TURRET_BAUD}")
     print(f"  servo : {TURRET_SERVO_PORT} @ {SERVO_BAUD}")
     print(f"  lidar : {lidar.port} @ {lidar.baud}")
+    print(f"  chassis camera: {chassis_camera.status()['stream_url']}")
     httpd.serve_forever()
 
 

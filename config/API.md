@@ -18,6 +18,8 @@ Implemented in `backend/app.py`.
 - `/api/servo/status`
 - `/api/power/status`
 - `/api/lidar`
+- `/api/chassis/camera/status`
+- `/api/chassis/camera/stream`
 
 ### POST
 
@@ -60,3 +62,4 @@ Notes:
 - The Pi backend publishes the turret stream URL as `http://<turret-ip>:81/stream`.
 - The ESP32 camera stream is served by a raw `WiFiServer` on port `81`, not a path-based router.
 - In practice, requests to `http://<turret-ip>:81` and `http://<turret-ip>:81/stream` both target the same stream listener.
+- The Rock 3C CSI chassis camera is proxied by the Pi backend at `/api/chassis/camera/stream`.
