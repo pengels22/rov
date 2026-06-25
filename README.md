@@ -101,7 +101,11 @@ Compile and upload a target:
 ```bash
 python3 firmware/deploy.py drive
 python3 firmware/deploy.py turret
+python3 firmware/deploy.py -a
 ```
+
+If you are already in `/home/pi/ROV/firmware`, run `python3 deploy.py -a`.
+For module mode, use `python3 -m deploy -a`; do not include the `.py` suffix.
 
 Compile only:
 
