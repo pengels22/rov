@@ -12,8 +12,10 @@ import os
 import serial
 import time
 
-PORT = '/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_8C:BF:EA:8F:4C:18-if00'
-BAUD = 115200
+from config import TURRET_BAUD, TURRET_PORT
+
+PORT = TURRET_PORT
+BAUD = TURRET_BAUD
 SAVE_PATH = '/home/pi/ROV/config'
 SAVE_FILE = os.path.join(SAVE_PATH, 'turret_ip.txt')
 

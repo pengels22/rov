@@ -4,9 +4,10 @@ This is a small no-venv, stdlib HTTP API backend for the Radxa ROV controller.
 
 It talks to:
 
-- `/dev/serial/by-id/usb-Arduino_Nano_ESP32_4827E2FC9A24-if01` — drive board running `drive_nano.ino`
-- `/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_8C:BF:EA:8F:4C:18-if00` — turret XIAO running `turret_xiao.ino`
-- `/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00` — turret servo controller running `turret_servos.ino`
+- `/dev/rov/drive` — drive board running `drive_nano.ino`
+- `/dev/rov/turret` — turret XIAO running `turret_xiao.ino`
+- `/dev/rov/turretn` — turret servo controller running `turret_servos.ino`
+- `/dev/rov/lidar` — LiDAR UART
 
 Only external Python dependency is `pyserial`, which is already installed on the ROV.
 

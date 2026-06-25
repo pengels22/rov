@@ -49,7 +49,8 @@ Before running on different hardware, review at least:
 
 - `DRIVE_PORT`
 - `TURRET_PORT`
-- `SERVO_PORT`
+- `TURRET_SERVO_PORT`
+- `LIDAR_PORT`
 - `HTTP_HOST`
 - `HTTP_PORT`
 - ultrasonic chip and line values
@@ -130,7 +131,7 @@ python3 firmware/deploy.py pi
 Notes:
 
 - uploading the `turret` target stops `rov-backend.service` before flashing and starts it again afterward
-- the script looks for board ports using `/dev/rov/...` and `/dev/serial/by-id/...`
+- the script looks for board ports using the `/dev/rov/...` udev aliases
 - the Pro Micro servo board uses a 1200 bps touch/reset flow before upload
 
 ## Common API Endpoints

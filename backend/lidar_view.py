@@ -6,7 +6,9 @@ from typing import Dict, List, Optional
 
 import serial
 
-PORT = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
+from config import LIDAR_PORT
+
+PORT = LIDAR_PORT
 BAUD = 512000
 
 START_SCAN = bytes([0xA5, 0x60])

@@ -12,7 +12,7 @@ from config import (
     HTTP_HOST, HTTP_PORT,
     PAN_SERVO_ID, TILT_SERVO_ID,
     SERVO_MIN_POS, SERVO_MAX_POS,
-    SERVO_CENTER_POS, SERVO_PORT, SERVO_BAUD,
+    SERVO_CENTER_POS, TURRET_SERVO_PORT, SERVO_BAUD,
 )
 from serial_line import SerialLine
 from drive import DriveController
@@ -435,7 +435,7 @@ def main():
     print("Using devices:")
     print(f"  drive : {DRIVE_PORT} @ {DRIVE_BAUD}")
     print(f"  turret: {TURRET_PORT} @ {TURRET_BAUD}")
-    print(f"  servo : {SERVO_PORT} @ {SERVO_BAUD}")
+    print(f"  servo : {TURRET_SERVO_PORT} @ {SERVO_BAUD}")
     print(f"  lidar : {lidar.port} @ {lidar.baud}")
     httpd.serve_forever()
 

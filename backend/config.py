@@ -1,8 +1,9 @@
 # ROV backend config
 
-DRIVE_PORT = "/dev/serial/by-id/usb-Arduino_Nano_ESP32_4827E2FC9A24-if01"
-TURRET_PORT = "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_8C:BF:EA:8F:4C:18-if00"
-SERVO_PORT = "/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00"
+DRIVE_PORT = "/dev/rov/drive"
+TURRET_PORT = "/dev/rov/turret"
+TURRET_SERVO_PORT = "/dev/rov/turretn"
+LIDAR_PORT = "/dev/rov/lidar"
 
 DRIVE_BAUD = 115200
 TURRET_BAUD = 115200

@@ -20,14 +20,12 @@ ARDUINO_CLI = Path(os.environ.get("ARDUINO_CLI", str(Path.home() / ".local/bin/a
 
 DRIVE_NANO_PORTS = [
     "/dev/rov/drive",
-    "/dev/serial/by-id/usb-Arduino_Nano_ESP32_*",
 ]
 TURRET_NANO_PORTS = [
-    "/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00",
+    "/dev/rov/turretn",
 ]
 TURRET_XIAO_PORTS = [
     "/dev/rov/turret",
-    "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_*",
 ]
 RESET_RELAY_CMD = "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0"
 
