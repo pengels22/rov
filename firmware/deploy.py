@@ -18,6 +18,56 @@ SCRIPT_PATH = Path(__file__).resolve()
 PROJECT_ROOT = SCRIPT_PATH.parent.parent
 ARDUINO_CLI = Path(os.environ.get("ARDUINO_CLI", str(Path.home() / ".local/bin/arduino-cli")))
 
+DRIVE_NANO_PORTS = [
+    "/dev/rov/drive",
+    "/dev/serial/by-id/usb-Arduino_Nano_ESP32_*",
+]
+TURRET_NANO_PORTS = [
+    "/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00",
+]
+TURRET_XIAO_PORTS = [
+    "/dev/rov/turret",
+    "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_*",
+]
+RESET_RELAY_CMD = "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0"
+
+FLAG_TARGETS = {
+    "turret_nano": "turret",
+    "turret_xiao": "turretn",
+    "drive_nano": "drive",
+    "backend": "pi",
+}
+
+TARGET_FLAGS = [
+    {
+        "options": ("-tn", "--turret-nano"),
+        "dest": "turret_nano",
+        "help": "Build and deploy the turret nano/servo controller.",
+    },
+    {
+        "options": ("-t", "--turret-xiao"),
+        "dest": "turret_xiao",
+        "help": "Build and deploy the turret XIAO controller.",
+    },
+    {
+        "options": ("-d", "--drive-nano"),
+        "dest": "drive_nano",
+        "help": "Build and deploy the drive Nano controller.",
+    },
+    {
+        "options": ("-b", "--backend"),
+        "dest": "backend",
+        "help": "Restart the backend service.",
+    },
+]
+
+ALL_TARGETS = [
+    FLAG_TARGETS["turret_nano"],
+    FLAG_TARGETS["turret_xiao"],
+    FLAG_TARGETS["drive_nano"],
+    FLAG_TARGETS["backend"],
+]
+
 BOARD_CONFIG = {
     "drive": {
         "boards": [
@@ -25,9 +75,9 @@ BOARD_CONFIG = {
                 "name": "drive",
                 "sketch": PROJECT_ROOT / "firmware/drive_nano",
                 "fqbn": "arduino:esp32:nano_nora",
-                "ports": [
-                    "/dev/rov/drive",
-                    "/dev/serial/by-id/usb-Arduino_Nano_ESP32_*",
+                "ports": DRIVE_NANO_PORTS,
+                "stop_services": [
+                    "rov-backend.service",
                 ],
             },
         ],
@@ -35,26 +85,29 @@ BOARD_CONFIG = {
     "turret": {
         "boards": [
             {
-                "name": "turret-xiao",
-                "sketch": PROJECT_ROOT / "firmware/turret_xiao",
-                "fqbn": "esp32:esp32:XIAO_ESP32S3",
-                "ports": [
-                    "/dev/rov/turret",
-                    "/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_*",
-                ],
-                "stop_services": [
-                    "rov-backend.service",
-                ],
-            },
-            {
                 "name": "turret-servos",
                 "sketch": PROJECT_ROOT / "firmware/turret_servos",
                 "fqbn": "SparkFun:avr:promicro:cpu=16MHzatmega32U4",
-                "ports": [
-                    "/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00",
+                "ports": TURRET_NANO_PORTS,
+                "reset_cmd": RESET_RELAY_CMD,
+            },
+        ],
+    },
+    "turretn": {
+        "boards": [
+            {
+                "name": "turret-xiao",
+                "sketch": PROJECT_ROOT / "firmware/turret_xiao",
+                "fqbn": "esp32:esp32:XIAO_ESP32S3",
+                "ports": TURRET_XIAO_PORTS,
+                "stop_services": [
+                    "rov-backend.service",
                 ],
-                "touch_1200bps": True,
-                "usb_reenumerate": True,
+                # Optional command to toggle an external relay/reset line before upload.
+                # Can be a string (shell command) or a list (argv style).
+                # Example using libgpiod `gpioset` to toggle gpiochip3 line 5 (GPIO3_A5):
+                # "reset_cmd": "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0",
+                "reset_cmd": RESET_RELAY_CMD,
             },
         ],
     },
@@ -71,20 +124,35 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Compile and optionally upload Arduino firmware for a configured target. "
-            "Examples: `python3 firmware/deploy.py drive`, "
-            "`python3 firmware/deploy.py --compile-only turret`, "
-            "`python3 firmware/deploy.py upload drive`, "
-            "`python3 firmware/deploy.py pi`."
+            "Examples: `python3 firmware/deploy.py -d`, "
+            "`python3 firmware/deploy.py -t`, "
+            "`python3 firmware/deploy.py -tn`, "
+            "`python3 firmware/deploy.py -b`, "
+            "`python3 firmware/deploy.py -a`."
         )
     )
     parser.add_argument(
         "arg1",
+        nargs="?",
         help="Target (`drive`, `turret`, or `pi`) or legacy action (`compile` or `upload`).",
     )
     parser.add_argument(
         "arg2",
         nargs="?",
         help="Legacy target when using `compile TARGET` or `upload TARGET`.",
+    )
+    for flag in TARGET_FLAGS:
+        parser.add_argument(
+            *flag["options"],
+            dest=flag["dest"],
+            action="store_true",
+            help=flag["help"],
+        )
+    parser.add_argument(
+        "-a",
+        "--all",
+        action="store_true",
+        help="Build and deploy all firmware targets, then restart the backend service.",
     )
     parser.add_argument(
         "--compile-only",
@@ -94,24 +162,52 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_mode_and_target(args: argparse.Namespace) -> tuple[str, str]:
+def collect_flag_targets(args: argparse.Namespace) -> list[str]:
+    if args.all:
+        return list(ALL_TARGETS)
+
+    selected: list[str] = []
+    for flag_name, target in FLAG_TARGETS.items():
+        if getattr(args, flag_name) and target not in selected:
+            selected.append(target)
+    return selected
+
+
+def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
+    flag_targets = collect_flag_targets(args)
+    if flag_targets:
+        if args.arg1 or args.arg2:
+            raise SystemExit("Use either short flags or legacy positional targets, not both.")
+        mode = "compile" if args.compile_only else "upload"
+        return mode, flag_targets
+
+    if not args.arg1:
+        raise SystemExit("Choose a target: -tn, -t, -d, -b, -a, or a legacy target name.")
+
     if args.arg1 in ("compile", "upload"):
         if not args.arg2:
             raise SystemExit("Usage: python3 firmware/deploy.py compile|upload drive|turret")
         mode = args.arg1
-        target = args.arg2
+        targets = [args.arg2]
     else:
         mode = "compile" if args.compile_only else "upload"
-        target = args.arg1
+        targets = [args.arg1]
 
+    for target in targets:
+        if target in SERVICE_TARGETS:
+            continue
+
+        if target not in BOARD_CONFIG:
+            valid = ", ".join(sorted({*BOARD_CONFIG, *SERVICE_TARGETS}))
+            raise SystemExit(f"Unknown target `{target}`. Valid targets: {valid}")
+
+    return mode, targets
+
+
+def target_mode(mode: str, target: str) -> str:
     if target in SERVICE_TARGETS:
-        return "service", target
-
-    if target not in BOARD_CONFIG:
-        valid = ", ".join(sorted({*BOARD_CONFIG, *SERVICE_TARGETS}))
-        raise SystemExit(f"Unknown target `{target}`. Valid targets: {valid}")
-
-    return mode, target
+        return "service"
+    return mode
 
 
 def find_port(target: str, patterns: list[str]) -> str:
@@ -232,15 +328,13 @@ def reenumerate_usb_device(port: str) -> None:
         print(f"[usb-reset] Warning: USB re-enumeration failed: {exc}")
 
 
-def main() -> int:
-    args = parse_args()
-    mode, target = resolve_mode_and_target(args)
-
-    if mode == "service":
+def deploy_target(mode: str, target: str) -> None:
+    effective_mode = target_mode(mode, target)
+    if effective_mode == "service":
         print(f"Target: {target}")
         restart_services(SERVICE_TARGETS[target])
         print(f"Service restart succeeded for `{target}`.")
-        return 0
+        return
 
     if not ARDUINO_CLI.exists():
         raise SystemExit(f"arduino-cli not found at {ARDUINO_CLI}")
@@ -257,9 +351,9 @@ def main() -> int:
         compile_cmd = [str(ARDUINO_CLI), "compile", "--fqbn", fqbn, sketch]
         run_command(compile_cmd, f"compile:{board['name']}")
 
-    if mode == "compile":
+    if effective_mode == "compile":
         print("Compile succeeded. Skipping upload.")
-        return 0
+        return
 
     try:
         for service in target_services:
@@ -284,6 +378,20 @@ def main() -> int:
                 port = wait_for_port(board["ports"])
                 print(f"Bootloader/serial port ready for {board['name']}: {port}")
 
+            # Optional: run a reset/toggle command (e.g., flip a relay) to reset the target board.
+            # Run this after compile and before upload, then wait for the serial port to reappear.
+            if board.get("reset_cmd"):
+                rc = board["reset_cmd"]
+                if isinstance(rc, str):
+                    run_command(["sh", "-c", rc], f"reset:{board['name']}")
+                else:
+                    run_command(rc, f"reset:{board['name']}")
+
+                # Give the device a moment to reset and re-enumerate, then wait for the port.
+                time.sleep(0.25)
+                port = wait_for_port(board["ports"], timeout_s=10.0)
+                print(f"Reset/toggle complete, device ready for {board['name']}: {port}")
+
             upload_cmd = [str(ARDUINO_CLI), "upload", "-p", port, "--fqbn", fqbn, sketch]
             run_command(upload_cmd, f"upload:{board['name']}")
     finally:
@@ -291,6 +399,14 @@ def main() -> int:
             manage_service(service, "start")
 
     print(f"Upload succeeded for `{target}`.")
+
+
+def main() -> int:
+    args = parse_args()
+    mode, targets = resolve_mode_and_targets(args)
+
+    for target in targets:
+        deploy_target(mode, target)
     return 0
 
 

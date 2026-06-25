@@ -60,10 +60,10 @@ class SerialLine:
         with self._lock:
             ser = self.open()
             old_timeout = ser.timeout
-            if response_timeout is not None:
-                ser.timeout = response_timeout
 
             try:
+                if response_timeout is not None:
+                    ser.timeout = response_timeout
                 ser.reset_input_buffer()
                 ser.write((cmd.rstrip("\n") + "\n").encode("utf-8"))
                 ser.flush()
@@ -97,6 +97,7 @@ class SerialLine:
             last_nonempty = ""
 
             try:
+                ser.timeout = timeout
                 ser.reset_input_buffer()
                 ser.write((cmd.rstrip("\n") + "\n").encode("utf-8"))
                 ser.flush()

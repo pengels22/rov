@@ -1,4 +1,22 @@
 #include <Servo.h>
+#include <Adafruit_NeoPixel.h>
+
+// NeoPixel configuration (moved from drive firmware)
+#define PIXEL_PIN 4
+#define NUM_PIXELS 4
+Adafruit_NeoPixel strip(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+#define CLR_OFF   0x000000UL
+#define CLR_GREEN 0x00FF00UL
+#define CLR_WHITE 0xFFFFFFUL
+
+void showPixels(uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3) {
+  strip.setPixelColor(0, p0);
+  strip.setPixelColor(1, p1);
+  strip.setPixelColor(2, p2);
+  strip.setPixelColor(3, p3);
+  strip.show();
+}
 
 // Servo pins
 const int PAN_PIN  = 2;
@@ -34,6 +52,12 @@ void setup() {
 
   Serial.println("READY TWO_SERVO_PROMICRO");
   Serial.println("CMDS: P90 T45 PT90,45 ?");
+
+  // Initialize NeoPixel strip (moved from drive controller)
+  strip.begin();
+  strip.setBrightness(80);
+  strip.show();
+  showPixels(CLR_GREEN, CLR_GREEN, CLR_GREEN, CLR_GREEN);
 }
 
 void loop() {

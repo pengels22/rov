@@ -13,7 +13,6 @@
 //  TB6612-style direction + PWM outputs.
 // ============================================================
 
-#include <Adafruit_NeoPixel.h>
 #include <Preferences.h>
 
 Preferences prefs;
@@ -33,7 +32,6 @@ Preferences prefs;
 #define MOTOR_PWMA  11  // Left PWM
 #define MOTOR_PWMB  12  // Right PWM
 
-#define PIXEL_PIN   10
 #define BATT_PIN    A0
 
 // =========================
@@ -42,34 +40,6 @@ Preferences prefs;
 #define BATT_DIVIDER     5.0f
 #define WATCHDOG_MS      2000
 
-// =========================
-// NeoPixel
-// =========================
-#define NUM_PIXELS 4
-Adafruit_NeoPixel strip(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
-#define CLR_OFF   0x000000UL
-#define CLR_RED   0xFF0000UL
-#define CLR_WHITE 0xFFFFFFUL
-#define CLR_GREEN 0x00FF00UL
-
-// =========================
-// Error LED patterns
-// =========================
-const uint32_t ERR_PAT[12][4] = {
-  { CLR_RED,   CLR_RED,   CLR_RED,   CLR_RED   },
-  { CLR_RED,   CLR_RED,   CLR_RED,   CLR_WHITE },
-  { CLR_RED,   CLR_RED,   CLR_WHITE, CLR_WHITE },
-  { CLR_RED,   CLR_RED,   CLR_WHITE, CLR_GREEN },
-  { CLR_RED,   CLR_RED,   CLR_GREEN, CLR_GREEN },
-  { CLR_RED,   CLR_GREEN, CLR_RED,   CLR_GREEN },
-  { CLR_RED,   CLR_WHITE, CLR_RED,   CLR_WHITE },
-  { CLR_RED,   CLR_WHITE, CLR_WHITE, CLR_WHITE },
-  { CLR_WHITE, CLR_RED,   CLR_RED,   CLR_RED   },
-  { CLR_WHITE, CLR_GREEN, CLR_RED,   CLR_RED   },
-  { CLR_WHITE, CLR_WHITE, CLR_RED,   CLR_RED   },
-  { CLR_WHITE, CLR_WHITE, CLR_WHITE, CLR_RED   },
-};
 
 // =========================
 // Drive state
@@ -106,6 +76,10 @@ DriveMode oppositeMode(DriveMode mode) {
 volatile long encL = 0;
 volatile long encR = 0;
 
+// Adjust these when the physical wiring or mounting orientation changes.
+const int ENC_L_SIGN = -1;
+const int ENC_R_SIGN = -1;
+
 DriveMode currentMode = MODE_STOP;
 bool motorsActive = false;
 
@@ -122,27 +96,22 @@ int currentTurn = 0;
 LedMode ledMode = LED_MODE_AUTO;
 
 unsigned long lastHbMs = 0;
-unsigned long lastBlinkMs = 0;
 unsigned long lastStreamMs = 0;
 unsigned long streamInterval = 0;
-
-bool blinkState = false;
 int lastLeftPwm = 0;
 int lastRightPwm = 0;
-
-#define BLINK_MS 300
 
 // =========================
 // Encoder ISRs
 // =========================
 void IRAM_ATTR isrLeftA() {
-  if (digitalRead(ENC_L_A) == digitalRead(ENC_L_B)) encL++;
-  else encL--;
+  if (digitalRead(ENC_L_A) == digitalRead(ENC_L_B)) encL += ENC_L_SIGN;
+  else encL -= ENC_L_SIGN;
 }
 
 void IRAM_ATTR isrRightA() {
-  if (digitalRead(ENC_R_A) == digitalRead(ENC_R_B)) encR++;
-  else encR--;
+  if (digitalRead(ENC_R_A) == digitalRead(ENC_R_B)) encR += ENC_R_SIGN;
+  else encR -= ENC_R_SIGN;
 }
 
 // =========================
@@ -242,12 +211,12 @@ void drive(DriveMode mode, float distIn, int speed = 255) {
       break;
 
     case MODE_RIGHT:
-      applyDrive(speed, -speed);
+      applyDrive(-speed, speed);
       currentTurn = speed;
       break;
 
     case MODE_LEFT:
-      applyDrive(-speed, speed);
+      applyDrive(speed, -speed);
       currentTurn = -speed;
       break;
 
@@ -278,91 +247,15 @@ void joyDrive(int throttle, int turn) {
   motorsActive = true;
   if (left > 0 && right > 0) currentMode = MODE_FWD;
   else if (left < 0 && right < 0) currentMode = MODE_REV;
-  else if (left > 0 && right < 0) currentMode = MODE_RIGHT;
-  else if (left < 0 && right > 0) currentMode = MODE_LEFT;
+  else if (left > 0 && right < 0) currentMode = MODE_LEFT;
+  else if (left < 0 && right > 0) currentMode = MODE_RIGHT;
   else if (left != 0) currentMode = left > 0 ? MODE_FWD : MODE_REV;
   else currentMode = right > 0 ? MODE_FWD : MODE_REV;
 
   applyDrive(left, right);
 }
 
-// =========================
-// LED helpers
-// =========================
-void showPixels(uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3) {
-  strip.setPixelColor(0, p0);
-  strip.setPixelColor(1, p1);
-  strip.setPixelColor(2, p2);
-  strip.setPixelColor(3, p3);
-  strip.show();
-}
-
-void updateLEDs() {
-  if (activeError >= 1 && activeError <= 12) {
-    const uint32_t* p = ERR_PAT[activeError - 1];
-    showPixels(p[0], p[1], p[2], p[3]);
-    return;
-  }
-
-  if (ledMode == LED_MODE_GREEN) {
-    showPixels(CLR_GREEN, CLR_GREEN, CLR_GREEN, CLR_GREEN);
-    return;
-  }
-
-  unsigned long now = millis();
-
-  if (now - lastBlinkMs >= BLINK_MS) {
-    lastBlinkMs = now;
-    blinkState = !blinkState;
-  }
-
-  const int TURN_THRESH = 50;
-  bool blinkR = currentTurn > TURN_THRESH;
-  bool blinkL = currentTurn < -TURN_THRESH;
-
-  switch (currentMode) {
-    case MODE_FWD:
-      showPixels(
-        CLR_WHITE,
-        CLR_WHITE,
-        blinkL ? (blinkState ? CLR_RED : CLR_OFF) : CLR_RED,
-        blinkR ? (blinkState ? CLR_RED : CLR_OFF) : CLR_RED
-      );
-      break;
-
-    case MODE_REV:
-      showPixels(
-        CLR_RED,
-        CLR_RED,
-        blinkL ? (blinkState ? CLR_WHITE : CLR_OFF) : CLR_WHITE,
-        blinkR ? (blinkState ? CLR_WHITE : CLR_OFF) : CLR_WHITE
-      );
-      break;
-
-    case MODE_RIGHT:
-      showPixels(
-        CLR_WHITE,
-        CLR_WHITE,
-        CLR_RED,
-        blinkState ? CLR_RED : CLR_OFF
-      );
-      break;
-
-    case MODE_LEFT:
-      showPixels(
-        CLR_WHITE,
-        CLR_WHITE,
-        blinkState ? CLR_RED : CLR_OFF,
-        CLR_RED
-      );
-      break;
-
-    case MODE_STOP:
-    default:
-      showPixels(CLR_OFF, CLR_OFF, CLR_OFF, CLR_OFF);
-      break;
-  }
-}
+// LED helpers removed (NeoPixel moved to turret firmware)
 
 // =========================
 // Battery voltage
@@ -685,9 +578,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ENC_L_A), isrLeftA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC_R_A), isrRightA, CHANGE);
 
-  strip.begin();
-  strip.setBrightness(80);
-  strip.show();
+  // NeoPixel moved to turret firmware; initialization removed
 
   lastHbMs = millis();
 
@@ -740,7 +631,7 @@ void loop() {
     Serial.println(encR);
   }
 
-  updateLEDs();
+  // NeoPixel handling moved to turret firmware
 
   while (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');

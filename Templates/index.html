@@ -1108,7 +1108,7 @@
     });
 
     function getDriveCommand() {
-      const throttleAxis = Math.abs(driveState.y) >= DRIVE_DEADZONE ? -driveState.y : 0;
+      const throttleAxis = Math.abs(driveState.y) >= DRIVE_DEADZONE ? driveState.y : 0;
       const turnAxis = Math.abs(driveState.x) >= DRIVE_DEADZONE ? driveState.x : 0;
       return {
         throttle: Math.round(clamp(throttleAxis, -1, 1) * 255),
@@ -1118,7 +1118,7 @@
 
     function getTurretCommand() {
       const panAxis = Math.abs(turretControlState.x) >= TURRET_DEADZONE ? turretControlState.x : 0;
-      const tiltAxis = Math.abs(turretControlState.y) >= TURRET_DEADZONE ? turretControlState.y : 0;
+      const tiltAxis = Math.abs(turretControlState.y) >= TURRET_DEADZONE ? -turretControlState.y : 0;
       return {
         pan_delta: Math.round(clamp(panAxis, -1, 1) * TURRET_STEP_MAX),
         tilt_delta: Math.round(clamp(tiltAxis, -1, 1) * TURRET_STEP_MAX),
