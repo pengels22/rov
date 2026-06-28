@@ -19,7 +19,8 @@ Thumbs.db
 
 # Logs and local runtime files
 *.log
-
+# Runtime-discovered turret stream target; managed by local services.
+config/turret_ip.txt
 # Build outputs
 build/
 dist/

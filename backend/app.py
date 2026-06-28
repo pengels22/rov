@@ -28,6 +28,7 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
 TEMPLATES_DIR = PROJECT_DIR / "Templates"
 INDEX_TEMPLATE = TEMPLATES_DIR / "index.html"
+TURRET_IP_FILE = PROJECT_DIR / "config" / "turret_ip.txt"
 
 drive = DriveController(SerialLine(DRIVE_PORT, DRIVE_BAUD, name="drive"))
 turret = TurretController(SerialLine(TURRET_PORT, TURRET_BAUD, name="turret"))
@@ -58,6 +59,25 @@ def read_json(handler):
     return json.loads(raw) if raw else {}
 
 
+def load_saved_turret_ip():
+    try:
+        value = TURRET_IP_FILE.read_text(encoding="utf-8").strip()
+        return value or None
+    except Exception:
+        return None
+
+
+def save_turret_ip(ip):
+    ip = (ip or "").strip()
+    if not ip:
+        return
+    try:
+        TURRET_IP_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TURRET_IP_FILE.write_text(ip + "\n", encoding="utf-8")
+    except Exception:
+        pass
+
+
 def system_status():
     # Attempt to gather fresh data from devices. If a device call fails,
     # fall back to the last cached values so the endpoint stays responsive.
@@ -79,6 +99,10 @@ def system_status():
     except Exception:
         turret_status = turret.last_status
 
+    live_turret_ip = turret_status.get("ip") if isinstance(turret_status, dict) else None
+    if live_turret_ip:
+        save_turret_ip(live_turret_ip)
+
     try:
         turret_telemetry = turret.telemetry()
     except Exception:
@@ -95,13 +119,8 @@ def system_status():
     except Exception:
         servo_status = {"raw": servos.last_command}
 
-    # Read any persisted turret IP saved by the serial monitor helper
-    saved_turret_ip = None
-    try:
-        with open('/home/pi/ROV/config/turret_ip.txt', 'r') as f:
-            saved_turret_ip = f.read().strip()
-    except Exception:
-        saved_turret_ip = None
+    # Read the persisted turret IP used by the dashboard stream URL.
+    saved_turret_ip = load_saved_turret_ip()
 
     turret_stream_url = None
     if saved_turret_ip:

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-Monitor turret serial for IP announcements and send WiFi credentials over serial.
-Saves the last seen IP to /home/pi/ROV/config/turret_ip.txt
+Utilities for talking to the turret over its serial port.
+
+`--monitor` is useful for short manual debugging sessions, but it should not be
+run alongside the main backend because both processes would compete for the same
+serial device. The long-running systemd service uses `turret_ip_monitor.py`
+instead, which reads the turret IP from the local backend API and keeps
+config/turret_ip.txt up to date without opening the serial port directly.
 
 Usage:
   python3 turret_serial.py --monitor
@@ -44,7 +49,8 @@ def monitor():
             if not line:
                 continue
             print(line)
-            # Look for explicit IP announcement or OK,WIFI_STA,<ip>
+            # Look for explicit IP announcement, wifi setup confirmation,
+            # or periodic STATUS lines that include the current IP.
             if line.startswith('IP,'):
                 ip = line.split(',', 1)[1]
                 save_ip(ip)
@@ -53,6 +59,10 @@ def monitor():
                 if len(parts) >= 3:
                     ip = parts[2]
                     save_ip(ip)
+            elif line.startswith('STATUS,'):
+                parts = line.split(',')
+                if len(parts) >= 3 and parts[2]:
+                    save_ip(parts[2])
 
 
 def set_wifi(ssid, password, timeout=10):
@@ -75,7 +85,7 @@ def set_wifi(ssid, password, timeout=10):
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
     g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument('--monitor', action='store_true', help='Monitor serial and save IP announcements')
+    g.add_argument('--monitor', action='store_true', help='Manually monitor serial and save IP announcements')
     g.add_argument('--set-wifi', nargs=2, metavar=('SSID', 'PASS'), help='Send WiFi credentials to turret')
     args = p.parse_args()
 
