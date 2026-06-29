@@ -74,7 +74,10 @@ class ChassisCameraService:
         while not self._stop_event.is_set():
             command = self._select_command()
             if not command:
-                self._last_error = "no chassis camera command found: rpicam-vid or libcamera-vid"
+                self._last_error = (
+                    "no chassis camera command found: "
+                    "rpicam-vid, libcamera-vid, or gst-launch-1.0"
+                )
                 self._running = False
                 time.sleep(2.0)
                 continue

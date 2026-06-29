@@ -15,9 +15,10 @@ HTTP_PORT = 8080
 # Rock 3C CSI chassis camera. The backend tries these commands in order and
 # proxies the MJPEG frames to the dashboard.
 CHASSIS_CAMERA_ENABLED = True
-CHASSIS_CAMERA_WIDTH = 1280
-CHASSIS_CAMERA_HEIGHT = 720
+CHASSIS_CAMERA_WIDTH = 800
+CHASSIS_CAMERA_HEIGHT = 600
 CHASSIS_CAMERA_FPS = 15
+CHASSIS_CAMERA_DEVICE = "/dev/video0"
 CHASSIS_CAMERA_COMMANDS = [
     [
         "rpicam-vid",
@@ -36,6 +37,28 @@ CHASSIS_CAMERA_COMMANDS = [
         "--height", str(CHASSIS_CAMERA_HEIGHT),
         "--framerate", str(CHASSIS_CAMERA_FPS),
         "-o", "-",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=2",
+        "!",
+        (
+            "video/x-raw,"
+            "format=NV16,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
     ],
 ]
 

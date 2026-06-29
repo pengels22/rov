@@ -587,6 +587,16 @@
       min-height: 2.4em;
     }
 
+    .turret-action-row {
+      display: flex;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    .turret-action-button {
+      min-width: 124px;
+    }
+
     .camera-panel {
       grid-area: cameras;
     }
@@ -733,6 +743,9 @@
                   </div>
                 </div>
                 <p class="joystick-readout" id="turretReadout">Idle</p>
+                <div class="turret-action-row">
+                  <button type="button" class="power-button turret-action-button" id="turretHomeButton">Turret Home</button>
+                </div>
               </section>
             </div>
           </div>
@@ -791,6 +804,7 @@
     const turretJoystick = document.getElementById("turretJoystick");
     const driveReadout = document.getElementById("driveReadout");
     const turretReadout = document.getElementById("turretReadout");
+    const turretHomeButton = document.getElementById("turretHomeButton");
     const motorEnableButton = document.getElementById("motorEnableButton");
     const motorEnableStatus = document.getElementById("motorEnableStatus");
     const batteryKillButton = document.getElementById("batteryKillButton");
@@ -822,6 +836,11 @@
 
     function setText(id, value) {
       document.getElementById(id).textContent = value;
+    }
+
+    function updateTurretHomeButton() {
+      turretHomeButton.disabled = turretCommandInFlight;
+      turretHomeButton.textContent = turretCommandInFlight ? "Homing..." : "Turret Home";
     }
 
     function setBrightnessUi(value) {
@@ -1196,6 +1215,7 @@
       }
 
       turretCommandInFlight = true;
+      updateTurretHomeButton();
       try {
         const response = await fetch("/api/turret/aim", {
           method: "POST",
@@ -1223,6 +1243,43 @@
         turretReadout.textContent = `Turret error: ${message}`;
       } finally {
         turretCommandInFlight = false;
+        updateTurretHomeButton();
+      }
+    }
+
+    async function sendTurretHome() {
+      if (turretCommandInFlight) {
+        return;
+      }
+
+      turretCommandInFlight = true;
+      updateTurretHomeButton();
+      try {
+        const response = await fetch("/api/turret/home", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ time_ms: 500 }),
+        });
+        const payload = await response.json();
+        if (!response.ok || payload?.ok === false || payload?.error) {
+          const message = payload?.error || "turret home failed";
+          turretReadout.textContent = `Turret error: ${message}`;
+          turretAlert.hidden = false;
+          turretAlert.textContent = message;
+          flagMetric.classList.remove("is-hidden");
+          setText("flagsValue", message);
+          return;
+        }
+        turretReadout.textContent = "Home position: Pan +0% | Tilt +0%";
+        if (payload?.turret_state) {
+          turretOverlay.textContent = `Range ${document.getElementById("rangeValue").textContent} | Pan ${formatDegrees(payload.turret_state.pan_deg)} | Tilt ${formatDegrees(payload.turret_state.tilt_deg)}`;
+        }
+      } catch (error) {
+        const message = error?.message || "turret home failed";
+        turretReadout.textContent = `Turret error: ${message}`;
+      } finally {
+        turretCommandInFlight = false;
+        updateTurretHomeButton();
       }
     }
 
@@ -1487,12 +1544,17 @@
       setRelayState("/api/power/battery_kill", nextEnabled);
     });
 
+    turretHomeButton.addEventListener("click", () => {
+      sendTurretHome();
+    });
+
     crosshairToggle.addEventListener("click", () => {
       applyCrosshairColor(crosshairColor === "green" ? "red" : "green");
     });
 
     initializeCrosshairColor();
     setBrightnessUi(0);
+    updateTurretHomeButton();
     window.setInterval(pumpDriveJoystick, DRIVE_COMMAND_MS);
     window.setInterval(pumpTurretJoystick, TURRET_COMMAND_MS);
     refreshStatus();

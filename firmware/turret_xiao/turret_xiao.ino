@@ -565,9 +565,14 @@ bool readAccel() {
     int16_t rawY = (int16_t)((data[3] << 8) | data[2]);
     int16_t rawZ = (int16_t)((data[5] << 8) | data[4]);
 
+    // Sensor is mounted 90 degrees counterclockwise around Z relative to the
+    // chassis, so remap X/Y into chassis coordinates before computing angles.
+    int16_t mappedX = rawY;
+    int16_t mappedY = -rawX;
+
     // ADXL345 full-res is about 256 LSB/g
-    ax_g = rawX / 256.0;
-    ay_g = rawY / 256.0;
+    ax_g = mappedX / 256.0;
+    ay_g = mappedY / 256.0;
     az_g = rawZ / 256.0;
   }
   else {
