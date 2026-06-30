@@ -4,7 +4,12 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
-from config import CHASSIS_CAMERA_COMMANDS, CHASSIS_CAMERA_ENABLED
+from config import (
+    CHASSIS_CAMERA_COMMANDS,
+    CHASSIS_CAMERA_DEVICE,
+    CHASSIS_CAMERA_ENABLED,
+    CHASSIS_CAMERA_V4L2_CONTROLS,
+)
 
 
 class ChassisCameraService:
@@ -20,6 +25,8 @@ class ChassisCameraService:
         self._last_frame_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self._active_command: Optional[List[str]] = None
+        self._device = CHASSIS_CAMERA_DEVICE
+        self._v4l2_controls = dict(CHASSIS_CAMERA_V4L2_CONTROLS)
         self._running = False
 
     def start(self) -> None:
@@ -86,6 +93,7 @@ class ChassisCameraService:
             self._running = True
             self._last_error = None
             try:
+                self._apply_device_controls()
                 self._process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
@@ -101,6 +109,27 @@ class ChassisCameraService:
 
             if not self._stop_event.is_set():
                 time.sleep(1.0)
+
+    def _apply_device_controls(self) -> None:
+        if not self._device or not self._v4l2_controls:
+            return
+
+        if not shutil.which("v4l2-ctl"):
+            return
+
+        controls = ",".join(
+            f"{name}={value}"
+            for name, value in self._v4l2_controls.items()
+        )
+        try:
+            subprocess.run(
+                ["v4l2-ctl", "-d", self._device, f"--set-ctrl={controls}"],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            self._last_error = f"unable to configure chassis camera: {exc}"
 
     def _read_mjpeg_stdout(self, process: subprocess.Popen[bytes]) -> None:
         if process.stdout is None:

@@ -173,6 +173,10 @@
       display: block;
     }
 
+    .chassis-camera-frame {
+      filter: brightness(1.65) contrast(1.12) saturate(1.05);
+    }
+
     .crosshair {
       --crosshair-color: #7cff7c;
       position: absolute;
@@ -692,7 +696,7 @@
             <div class="camera-stack">
               <p class="camera-caption">Chassis Camera</p>
               <div class="camera-preview">
-                <img id="chassisCamera" class="camera-frame" alt="Chassis camera feed" hidden>
+                <img id="chassisCamera" class="camera-frame chassis-camera-frame" alt="Chassis camera feed" hidden>
                 <div id="chassisFallback" class="placeholder">
                   <div>
                     <strong>Camera Feed Unavailable</strong>

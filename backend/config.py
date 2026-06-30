@@ -19,6 +19,13 @@ CHASSIS_CAMERA_WIDTH = 800
 CHASSIS_CAMERA_HEIGHT = 600
 CHASSIS_CAMERA_FPS = 15
 CHASSIS_CAMERA_DEVICE = "/dev/video0"
+CHASSIS_CAMERA_V4L2_CONTROLS = {
+    "auto_exposure": 0,
+    "gain_automatic": 1,
+    "white_balance_automatic": 1,
+    "horizontal_flip": 1,
+    "vertical_flip": 1,
+}
 CHASSIS_CAMERA_COMMANDS = [
     [
         "rpicam-vid",
