@@ -118,7 +118,11 @@ def system_status():
         if "position" in tilt_status:
             turret_state.update_tilt_position(tilt_status["position"])
     except Exception:
-        servo_status = {"raw": servos.last_command}
+        servo_status = {
+            **servos.last_status,
+            "stale": True,
+            "last_error": servos.last_error,
+        }
 
     # Read the persisted turret IP used by the dashboard stream URL.
     saved_turret_ip = load_saved_turret_ip()
@@ -134,6 +138,7 @@ def system_status():
         "turret_status": turret_status,
         "turret_telemetry": turret_telemetry,
         "servo_status": servo_status,
+        "servo_battery_v": servo_status.get("battery_v"),
         "relay_status": relays.snapshot(),
         "turret_state": turret_state.as_dict(),
         "saved_turret_ip": saved_turret_ip,

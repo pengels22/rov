@@ -22,12 +22,18 @@ class HobbyServoController:
 
     def _parse_state(self, resp: str) -> Dict[str, Any]:
         parts = resp.split()
-        if len(parts) != 5 or parts[0] != "STATE" or parts[1] != "PAN" or parts[3] != "TILT":
+        if (
+            len(parts) not in (5, 7)
+            or parts[0] != "STATE"
+            or parts[1] != "PAN"
+            or parts[3] != "TILT"
+            or (len(parts) == 7 and parts[5] != "BATT")
+        ):
             return {"raw": resp, "parse_error": True}
 
         pan = int(parts[2])
         tilt = int(parts[4])
-        return {
+        status = {
             "mode": "serial_hobby_servo",
             "ready": True,
             "raw": resp,
@@ -61,6 +67,9 @@ class HobbyServoController:
                 },
             },
         }
+        if len(parts) == 7:
+            status["battery_v"] = float(parts[6])
+        return status
 
     @staticmethod
     def _parse_single_move(resp: str, expected_axis: str) -> Dict[str, int]:

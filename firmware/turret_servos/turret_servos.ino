@@ -22,6 +22,13 @@ void showPixels(uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3) {
 const int PAN_PIN  = 2;
 const int TILT_PIN = 3;
 
+// Battery monitor: battery positive must be connected to A0 through a divider
+// that keeps the pin below the Pro Micro's 5 V analog-reference voltage.
+const int BATTERY_PIN = A0;
+const float BATTERY_DIVIDER = 5.0f;
+const float ADC_REFERENCE_V = 5.0f;
+const float ADC_MAX_READING = 1023.0f;
+
 // Safe limits for normal hobby servos
 const int PAN_MIN = 0;
 const int PAN_MAX = 180;
@@ -179,7 +186,14 @@ void reportState() {
   Serial.print("STATE PAN ");
   Serial.print(panAngle);
   Serial.print(" TILT ");
-  Serial.println(tiltAngle);
+  Serial.print(tiltAngle);
+  Serial.print(" BATT ");
+  Serial.println(readBatteryVoltage(), 2);
+}
+
+float readBatteryVoltage() {
+  int raw = analogRead(BATTERY_PIN);
+  return (raw / ADC_MAX_READING) * ADC_REFERENCE_V * BATTERY_DIVIDER;
 }
 
 bool isValidAngleString(String value, int minAngle, int maxAngle) {

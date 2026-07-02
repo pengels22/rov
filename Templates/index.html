@@ -927,6 +927,11 @@
       return value != null ? `${value.toFixed(1)} in` : "--";
     }
 
+    function formatBatteryVoltage(value) {
+      const voltage = Number(value);
+      return Number.isFinite(voltage) ? `${voltage.toFixed(2)} V` : "--";
+    }
+
     function correctedTurretRange(rangeIn, panDeg) {
       const range = Number(rangeIn);
       if (!Number.isFinite(range) || range < 0) return null;
