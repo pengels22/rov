@@ -774,12 +774,8 @@
               <p class="metric-value" id="rangeValue">--</p>
             </div>
             <div class="metric">
-              <p class="metric-label">Front Ultrasonic</p>
-              <p class="metric-value" id="frontUltrasonicValue">--</p>
-            </div>
-            <div class="metric">
-              <p class="metric-label">Rear Ultrasonic</p>
-              <p class="metric-value" id="rearUltrasonicValue">--</p>
+              <p class="metric-label">Battery Voltage</p>
+              <p class="metric-value" id="servoBatteryStatus">--</p>
             </div>
             <div class="metric full-width is-hidden" id="flagMetric">
               <p class="metric-label">Turret Alert</p>
@@ -2055,8 +2051,7 @@
       turretAlert.textContent = "backend offline";
       flagMetric.classList.remove("is-hidden");
       setText("flagsValue", "backend offline");
-      setText("frontUltrasonicValue", "--");
-      setText("rearUltrasonicValue", "--");
+      setText("servoBatteryStatus", "--");
       updateRelayCard(motorEnableButton, motorEnableStatus, null, "Motor Enable");
       updateRelayCard(batteryKillButton, batteryKillStatus, null, "Battery Kill");
     }
@@ -2090,8 +2085,7 @@
           data.turret_telemetry?.range_in,
           data.turret_state?.pan_deg,
         )));
-        setText("frontUltrasonicValue", formatPiUltrasonic(data.pi_ultrasonic?.front));
-        setText("rearUltrasonicValue", formatPiUltrasonic(data.pi_ultrasonic?.rear));
+        setText("servoBatteryStatus", formatBatteryVoltage(data.servo_battery_v ?? data.servo_status?.battery_v));
         updateRelayCard(motorEnableButton, motorEnableStatus, data.relay_status?.motor_enable, "Motor Enable");
         updateRelayCard(batteryKillButton, batteryKillStatus, data.relay_status?.battery_kill, "Battery Kill");
       } catch (error) {

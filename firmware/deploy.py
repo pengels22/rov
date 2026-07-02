@@ -30,8 +30,8 @@ TURRET_XIAO_PORTS = [
 RESET_RELAY_CMD = "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0"
 
 FLAG_TARGETS = {
-    "turret_nano": "turret",
-    "turret_xiao": "turretn",
+    "turret_nano": "turretn",
+    "turret_xiao": "turret",
     "drive_nano": "drive",
     "backend": "pi",
 }
