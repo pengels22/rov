@@ -15,6 +15,7 @@ Implemented in `backend/app.py`.
 - `/api/drive/status`
 - `/api/turret/status`
 - `/api/turret/telemetry`
+- `/api/turret/camera/stream`
 - `/api/servo/status`
 - `/api/power/status`
 - `/api/lidar`
@@ -60,7 +61,9 @@ Implemented in `firmware/turret_xiao/turret_xiao.ino`.
 
 Notes:
 
-- The Pi backend publishes the turret stream URL as `http://<turret-ip>:81/stream`.
+- The Pi backend proxies the turret stream at `/api/turret/camera/stream`.
+- The proxy connects upstream to `http://<turret-ip>:81/stream`, avoiding
+  browser cross-origin and direct-network issues.
 - The ESP32 camera stream is served by a raw `WiFiServer` on port `81`, not a path-based router.
 - In practice, requests to `http://<turret-ip>:81` and `http://<turret-ip>:81/stream` both target the same stream listener.
 - The Rock 3C CSI chassis camera is proxied by the Pi backend at `/api/chassis/camera/stream`.

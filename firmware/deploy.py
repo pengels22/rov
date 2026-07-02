@@ -36,6 +36,27 @@ FLAG_TARGETS = {
     "backend": "pi",
 }
 
+SERIAL_MONITOR_FLAGS = [
+    {
+        "options": ("-ts",),
+        "dest": "turret_serial",
+        "target": "turretn",
+        "help": "Print serial output from the turret XIAO controller.",
+    },
+    {
+        "options": ("-tsn",),
+        "dest": "turret_nano_serial",
+        "target": "turret",
+        "help": "Print serial output from the turret servo Nano controller.",
+    },
+    {
+        "options": ("-ds",),
+        "dest": "drive_serial",
+        "target": "drive",
+        "help": "Print serial output from the drive Nano ESP32 controller.",
+    },
+]
+
 TARGET_FLAGS = [
     {
         "options": ("-tn", "--turret-nano"),
@@ -97,7 +118,7 @@ BOARD_CONFIG = {
             {
                 "name": "turret-xiao",
                 "sketch": PROJECT_ROOT / "firmware/turret_xiao",
-                "fqbn": "esp32:esp32:XIAO_ESP32S3",
+                "fqbn": "esp32:esp32:XIAO_ESP32S3:PSRAM=opi",
                 "ports": TURRET_XIAO_PORTS,
                 "stop_services": [
                     "rov-backend.service",
@@ -126,6 +147,9 @@ def parse_args() -> argparse.Namespace:
             "Examples: `python3 firmware/deploy.py -d`, "
             "`python3 firmware/deploy.py -t`, "
             "`python3 firmware/deploy.py -tn`, "
+            "`python3 firmware/deploy.py -ts`, "
+            "`python3 firmware/deploy.py -tsn`, "
+            "`python3 firmware/deploy.py -ds`, "
             "`python3 firmware/deploy.py -b`, "
             "`python3 firmware/deploy.py -a`."
         )
@@ -141,6 +165,13 @@ def parse_args() -> argparse.Namespace:
         help="Legacy target when using `compile TARGET` or `upload TARGET`.",
     )
     for flag in TARGET_FLAGS:
+        parser.add_argument(
+            *flag["options"],
+            dest=flag["dest"],
+            action="store_true",
+            help=flag["help"],
+        )
+    for flag in SERIAL_MONITOR_FLAGS:
         parser.add_argument(
             *flag["options"],
             dest=flag["dest"],
@@ -173,6 +204,18 @@ def collect_flag_targets(args: argparse.Namespace) -> list[str]:
 
 
 def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
+    serial_targets = [
+        flag["target"]
+        for flag in SERIAL_MONITOR_FLAGS
+        if getattr(args, flag["dest"])
+    ]
+    if serial_targets:
+        if len(serial_targets) > 1:
+            raise SystemExit("Choose only one serial monitor flag at a time.")
+        if collect_flag_targets(args) or args.all or args.compile_only or args.arg1 or args.arg2:
+            raise SystemExit("Serial monitor flags cannot be combined with deploy targets.")
+        return "serial", serial_targets
+
     flag_targets = collect_flag_targets(args)
     if flag_targets:
         if args.arg1 or args.arg2:
@@ -181,7 +224,10 @@ def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
         return mode, flag_targets
 
     if not args.arg1:
-        raise SystemExit("Choose a target: -tn, -t, -d, -b, -a, or a legacy target name.")
+        raise SystemExit(
+            "Choose a target: -tn, -t, -d, -b, -a; "
+            "a serial monitor: -ts, -tsn, -ds; or a legacy target name."
+        )
 
     if args.arg1 in ("compile", "upload"):
         if not args.arg2:
@@ -243,6 +289,15 @@ def manage_service(service: str, action: str) -> None:
         raise SystemExit(completed.returncode)
 
 
+def service_is_active(service: str) -> bool:
+    completed = subprocess.run(
+        ["systemctl", "is-active", "--quiet", service],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return completed.returncode == 0
+
+
 def collect_target_services(boards: list[dict]) -> list[str]:
     ordered: list[str] = []
     for board in boards:
@@ -262,6 +317,35 @@ def restart_services(services: list[str]) -> None:
     time.sleep(1.0)
     for service in reversed(services):
         manage_service(service, "start")
+
+
+def monitor_serial(target: str) -> None:
+    if serial is None:
+        raise SystemExit("pyserial is required for serial monitoring.")
+
+    board = BOARD_CONFIG[target]["boards"][0]
+    port = find_port(board["name"], board["ports"])
+    services = list(board.get("stop_services", []))
+    if "rov-backend.service" not in services:
+        services.append("rov-backend.service")
+
+    active_services = [service for service in services if service_is_active(service)]
+    for service in active_services:
+        manage_service(service, "stop")
+
+    try:
+        port = wait_for_port(board["ports"], timeout_s=5.0)
+        print(f"[serial:{board['name']}] {port} at 115200 baud (Ctrl+C to exit)")
+        with serial.Serial(port, 115200, timeout=0.25) as connection:
+            while True:
+                raw = connection.readline()
+                if raw:
+                    print(raw.decode("utf-8", errors="replace"), end="", flush=True)
+    except KeyboardInterrupt:
+        print("\n[serial] Monitor stopped.")
+    finally:
+        for service in reversed(active_services):
+            manage_service(service, "start")
 
 
 def touch_serial_1200bps(port: str) -> None:
@@ -419,6 +503,10 @@ def deploy_target(mode: str, target: str) -> None:
 def main() -> int:
     args = parse_args()
     mode, targets = resolve_mode_and_targets(args)
+
+    if mode == "serial":
+        monitor_serial(targets[0])
+        return 0
 
     for target in targets:
         deploy_target(mode, target)

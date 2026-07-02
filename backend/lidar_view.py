@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import math
+import statistics
 import threading
 import time
 from typing import Dict, List, Optional
@@ -14,17 +15,12 @@ BAUD = 512000
 START_SCAN = bytes([0xA5, 0x60])
 STOP_SCAN = bytes([0xA5, 0x65])
 
-MAX_RANGE_MM = 5000
-MIN_RANGE_MM = 100
+MAX_RANGE_MM = 30000
+MIN_RANGE_MM = 50
 POINTS_TO_KEEP = 20000
-
-
-def angle_correction(distance_mm: float) -> float:
-    if distance_mm <= 0:
-        return 0.0
-    return math.degrees(
-        math.atan(21.8 * (155.3 - distance_mm) / (155.3 * distance_mm))
-    )
+FILTER_POINTS = 6000
+FILTER_ANGLE_BINS = 720
+FILTER_MIN_SAMPLES = 2
 
 
 def parse_packet(pkt: bytes) -> List[Dict[str, float]]:
@@ -52,7 +48,10 @@ def parse_packet(pkt: bytes) -> List[Dict[str, float]]:
     for i in range(sample_count):
         off = 10 + i * 2
         d_raw = pkt[off] | (pkt[off + 1] << 8)
-        distance_mm = d_raw / 4.0
+        # TG30/4ROS is a TOF lidar. Its packet distance is already in
+        # millimetres; division by four and geometric angle correction apply
+        # to YDLIDAR's older triangulation models, not this sensor.
+        distance_mm = float(d_raw)
 
         if sample_count > 1:
             angle = start_angle + diff * i / (sample_count - 1)
@@ -63,7 +62,6 @@ def parse_packet(pkt: bytes) -> List[Dict[str, float]]:
             angle -= 360
 
         if MIN_RANGE_MM <= distance_mm <= MAX_RANGE_MM:
-            angle = (angle + angle_correction(distance_mm)) % 360
             angle_rad = math.radians(angle)
             points.append({
                 "angle_deg": round(angle, 2),
@@ -141,7 +139,9 @@ class LidarService:
 
     def snapshot(self) -> Dict[str, object]:
         with self._lock:
-            points = list(self._latest_scan_points or self._points)
+            raw_points = list(self._points[-FILTER_POINTS:])
+
+        points = self._filter_points(raw_points)
 
         return {
             "ok": self._last_error is None,
@@ -155,6 +155,38 @@ class LidarService:
             "last_packet_at": self._last_packet_at,
             "last_error": self._last_error,
         }
+
+    def _filter_points(
+        self,
+        raw_points: List[Dict[str, float]],
+    ) -> List[Dict[str, float]]:
+        """Median-filter a few recent revolutions into stable angular bins."""
+        distances_by_bin: List[List[float]] = [
+            [] for _ in range(FILTER_ANGLE_BINS)
+        ]
+        for point in raw_points:
+            angle_deg = point.get("angle_deg")
+            distance_mm = point.get("distance_mm")
+            if angle_deg is None or distance_mm is None:
+                continue
+            bin_index = int((angle_deg % 360.0) / 360.0 * FILTER_ANGLE_BINS)
+            distances_by_bin[bin_index].append(distance_mm)
+
+        points: List[Dict[str, float]] = []
+        for bin_index, distances in enumerate(distances_by_bin):
+            if len(distances) < FILTER_MIN_SAMPLES:
+                continue
+
+            distance_mm = statistics.median(distances)
+            angle_deg = (bin_index + 0.5) * 360.0 / FILTER_ANGLE_BINS
+            angle_rad = math.radians(angle_deg)
+            points.append({
+                "angle_deg": round(angle_deg, 2),
+                "distance_mm": round(distance_mm, 2),
+                "x": round(distance_mm * math.cos(angle_rad), 2),
+                "y": round(distance_mm * math.sin(angle_rad), 2),
+            })
+        return points
 
     def _run(self) -> None:
         try:

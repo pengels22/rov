@@ -95,8 +95,8 @@ WiFiClient streamClient;
 bool streamActive = false;
 unsigned long lastFrameMs = 0;
 const unsigned long FRAME_INTERVAL_MS = 80; // ~12 FPS
-const framesize_t STREAM_FRAME_SIZE_PSRAM = FRAMESIZE_UXGA;  // 1600x1200
-const int STREAM_JPEG_QUALITY_PSRAM = 4;
+const framesize_t STREAM_FRAME_SIZE_PSRAM = FRAMESIZE_SVGA;  // 800x600, matches chassis stream
+const int STREAM_JPEG_QUALITY_PSRAM = 10;
 
 // =========================
 // Error helper
@@ -138,13 +138,13 @@ bool initCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
-    // Keep the camera at its maximum size when PSRAM is available.
-    // Streaming still uses a single PSRAM-backed frame buffer to stay stable.
-    config.frame_size = FRAMESIZE_UXGA;
+    // Match the chassis stream dimensions while keeping enough headroom for
+    // smooth capture and network delivery.
+    config.frame_size = STREAM_FRAME_SIZE_PSRAM;
     config.jpeg_quality = 10;
-    config.fb_count = 1;
+    config.fb_count = 2;
     config.fb_location = CAMERA_FB_IN_PSRAM;
-    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+    config.grab_mode = CAMERA_GRAB_LATEST;
   } else {
     config.frame_size = FRAMESIZE_QQVGA;  // 160x120 fallback, fits in DRAM
     config.jpeg_quality = 15;
@@ -312,11 +312,21 @@ void handleStatus() {
 // Called every loop() — sends at most one frame per FRAME_INTERVAL_MS,
 // then returns immediately so server.handleClient() and sensor reads keep running.
 void runStreamServer() {
+  // A browser refresh can leave the ESP32 side of the old TCP connection
+  // looking alive for a long time. Let the newest connection take over so
+  // the dashboard can recover without rebooting the turret.
+  WiFiClient pendingClient = streamServer.available();
+  if (pendingClient) {
+    if (streamActive) {
+      streamClient.stop();
+      streamActive = false;
+    }
+    streamClient = pendingClient;
+  }
+
   // Accept a new client when idle
   if (!streamActive) {
-    WiFiClient c = streamServer.available();
-    if (!c) return;
-    streamClient = c;
+    if (!streamClient) return;
 
     if (!camera_ok) {
       streamClient.print("HTTP/1.1 503 Service Unavailable\r\n"

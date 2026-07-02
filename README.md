@@ -108,6 +108,14 @@ python3 firmware/deploy.py turret
 python3 firmware/deploy.py -a
 ```
 
+Print controller serial output (press Ctrl+C to stop and restart the backend):
+
+```bash
+python3 firmware/deploy.py -ts   # turret XIAO
+python3 firmware/deploy.py -tsn  # turret servo Nano
+python3 firmware/deploy.py -ds   # drive Nano ESP32
+```
+
 If you are already in `/home/pi/ROV/firmware`, run `python3 deploy.py -a`.
 For module mode, use `python3 -m deploy -a`; do not include the `.py` suffix.
 

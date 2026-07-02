@@ -4,6 +4,7 @@ import json
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
 from config import (
@@ -124,7 +125,7 @@ def system_status():
 
     turret_stream_url = None
     if saved_turret_ip:
-        turret_stream_url = f"http://{saved_turret_ip}:81/stream"
+        turret_stream_url = "/api/turret/camera/stream"
 
     out = {
         "ok": True,
@@ -160,6 +161,7 @@ def system_status():
             "POST /api/drive/reset_encoders",
             "GET /api/turret/status",
             "GET /api/turret/telemetry",
+            "GET /api/turret/camera/stream",
             "POST /api/turret/accel_reinit",
             "POST /api/turret/cam_reinit",
             "POST /api/turret/camera/brightness",
@@ -287,6 +289,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/chassis/camera/stream":
                 self._send_chassis_camera_stream()
                 return
+            if path == "/api/turret/camera/stream":
+                self._send_turret_camera_stream()
+                return
 
             status, payload, content_type = self.route_get(path)
             if content_type == "html":
@@ -327,6 +332,46 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 return
+
+    def _send_turret_camera_stream(self):
+        turret_ip = load_saved_turret_ip()
+        if not turret_ip:
+            self._send_json(503, {"ok": False, "error": "turret IP unavailable"})
+            return
+
+        request = Request(
+            f"http://{turret_ip}:81/stream",
+            headers={"User-Agent": "ROV-Backend/0.1"},
+        )
+        try:
+            upstream = urlopen(request, timeout=5.0)
+        except Exception as exc:
+            self._send_json(502, {
+                "ok": False,
+                "error": f"turret camera unavailable: {exc}",
+            })
+            return
+
+        with upstream:
+            content_type = upstream.headers.get(
+                "Content-Type",
+                "multipart/x-mixed-replace; boundary=frame",
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+
+            while True:
+                try:
+                    chunk = upstream.read(16 * 1024)
+                    if not chunk:
+                        return
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                    return
 
     def do_POST(self):
         try:

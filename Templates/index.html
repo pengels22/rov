@@ -116,12 +116,12 @@
     .camera-cluster {
       flex: 1 1 auto;
       display: flex;
-      gap: 14px;
+      gap: 0;
       align-items: stretch;
-      padding: 12px;
-      border-radius: 18px;
-      background: rgba(2, 10, 15, 0.42);
-      border: 1px solid rgba(78, 208, 255, 0.12);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
     }
 
     .camera-stack {
@@ -129,11 +129,11 @@
       min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 6px;
     }
 
     .camera-stack.primary-camera {
-      flex: 1.18 1 0;
+      flex: 1 1 0;
     }
 
     .camera-caption {
@@ -153,18 +153,19 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 10px;
-      border-radius: 18px;
-      background: rgba(2, 10, 15, 0.42);
-      border: 1px solid rgba(78, 208, 255, 0.12);
+      padding: 0;
+      overflow: hidden;
+      border: 0;
+      border-radius: 0;
+      background: #02080b;
     }
 
     .camera-frame,
     .placeholder {
       width: 100%;
       height: 100%;
-      border-radius: 14px;
-      border: 1px solid rgba(78, 208, 255, 0.16);
+      border-radius: 0;
+      border: 0;
       background: #02080b;
     }
 
@@ -180,7 +181,7 @@
     .crosshair {
       --crosshair-color: #7cff7c;
       position: absolute;
-      inset: 10px;
+      inset: 0;
       pointer-events: none;
       z-index: 2;
     }
@@ -641,6 +642,7 @@
 
       .camera-cluster {
         flex-direction: column;
+        gap: 14px;
       }
 
       :root {
@@ -664,8 +666,8 @@
             <div class="camera-stack primary-camera">
               <p class="camera-caption">Turret Camera</p>
               <div class="camera-preview">
-                <img id="turretCamera" class="camera-frame" alt="Turret camera feed">
-                <div id="turretFallback" class="placeholder" hidden>
+                <img id="turretCamera" class="camera-frame" alt="Turret camera feed" hidden>
+                <div id="turretFallback" class="placeholder">
                   <div>
                     <strong>Camera Feed Unavailable</strong>
                     Waiting for turret stream IP and camera service.
@@ -757,9 +759,9 @@
       </section>
 
       <section class="panel lidar-panel">
-        <h2>LiDAR Polar Heatmap</h2>
+        <h2>LiDAR 360° Clearance</h2>
         <div class="panel-body">
-          <canvas id="lidarCanvas" width="1600" height="1000"></canvas>
+          <canvas id="lidarCanvas" width="1000" height="600"></canvas>
         </div>
       </section>
 
@@ -813,7 +815,7 @@
     const motorEnableStatus = document.getElementById("motorEnableStatus");
     const batteryKillButton = document.getElementById("batteryKillButton");
     const batteryKillStatus = document.getElementById("batteryKillStatus");
-    const TARGET_FRAME_MS = 1000 / 60;
+    const LIDAR_REFRESH_MS = 50;
     const STATUS_REFRESH_MS = 500;
     const DRIVE_COMMAND_MS = 90;
     const DRIVE_DEADZONE = 0.12;
@@ -821,7 +823,17 @@
     const TURRET_STEP_MAX = 12;
     const TURRET_DEADZONE = 0.24;
     const CROSSHAIR_STORAGE_KEY = "rovCrosshairColor";
-    const LIDAR_DISPLAY_OFFSET_DEG = 80;
+    // The sensor is mounted facing aft: rotate its readings into the
+    // vehicle-relative frame used by the dashboard.
+    const LIDAR_DISPLAY_OFFSET_DEG = 260;
+    const LIDAR_TURRET_REAR_ANGLE_DEG = 270;
+    const LIDAR_TURRET_EXCLUSION_HALF_WIDTH_DEG = 15;
+    const LIDAR_TURRET_EXCLUSION_RANGE_MM = 750;
+    const LIDAR_FRONT_OFFSET_MM = 3 * 25.4;
+    const LIDAR_SIDE_OFFSET_MM = 3 * 25.4;
+    const TURRET_FORWARD_RANGE_OFFSET_IN = 6;
+    const TURRET_SIDE_RANGE_OFFSET_IN = 2;
+    const TURRET_SIDE_RANGE_ANGLE_DEG = 100;
     const CROSSHAIR_COLORS = {
       green: "#7cff7c",
       red: "#ff5d5d",
@@ -840,6 +852,27 @@
 
     function setText(id, value) {
       document.getElementById(id).textContent = value;
+    }
+
+    function isLidarTurretReturn(angleDeg, distanceMm) {
+      const rearDelta = Math.abs(
+        ((angleDeg - LIDAR_TURRET_REAR_ANGLE_DEG + 540) % 360) - 180,
+      );
+      return (
+        rearDelta <= LIDAR_TURRET_EXCLUSION_HALF_WIDTH_DEG
+        && distanceMm <= LIDAR_TURRET_EXCLUSION_RANGE_MM
+      );
+    }
+
+    function correctedLidarClearance(angleDeg, distanceMm) {
+      const normalizedAngle = ((angleDeg % 360) + 360) % 360;
+      const isFront = normalizedAngle >= 45 && normalizedAngle <= 135;
+      const isLeft = normalizedAngle > 135 && normalizedAngle <= 225;
+      const isRight = normalizedAngle >= 315 || normalizedAngle < 45;
+      const offsetMm = isFront
+        ? LIDAR_FRONT_OFFSET_MM
+        : (isLeft || isRight ? LIDAR_SIDE_OFFSET_MM : 0);
+      return Math.max(0, distanceMm - offsetMm);
     }
 
     function updateTurretHomeButton() {
@@ -898,6 +931,17 @@
       return value != null ? `${value.toFixed(1)} in` : "--";
     }
 
+    function correctedTurretRange(rangeIn, panDeg) {
+      const range = Number(rangeIn);
+      if (!Number.isFinite(range) || range < 0) return null;
+
+      const pan = Number(panDeg);
+      const offset = Number.isFinite(pan) && Math.abs(pan) > TURRET_SIDE_RANGE_ANGLE_DEG
+        ? TURRET_SIDE_RANGE_OFFSET_IN
+        : TURRET_FORWARD_RANGE_OFFSET_IN;
+      return Math.max(0, range - offset);
+    }
+
     function formatPiUltrasonic(sensor) {
       if (!sensor || sensor.configured === false) {
         return "Not wired";
@@ -909,7 +953,10 @@
     }
 
     function setTurretOverlay(data) {
-      const range = formatRange(data.turret_telemetry?.range_in);
+      const range = formatRange(correctedTurretRange(
+        data.turret_telemetry?.range_in,
+        data.turret_state?.pan_deg,
+      ));
       const pan = formatDegrees(data.turret_state?.pan_deg);
       const tilt = formatDegrees(data.turret_state?.tilt_deg);
       turretOverlay.textContent = `Range ${range} | Pan ${pan} | Tilt ${tilt}`;
@@ -960,12 +1007,10 @@
         return;
       }
 
-      if (cameraImg.src !== streamUrl) {
-        cameraImg.src = streamUrl;
+      const resolvedStreamUrl = new URL(streamUrl, window.location.href).href;
+      if (cameraImg.src !== resolvedStreamUrl) {
+        cameraImg.src = resolvedStreamUrl;
       }
-
-      cameraImg.hidden = false;
-      cameraFallback.hidden = true;
     }
 
     function updateChassisCamera(cameraStatus) {
@@ -980,9 +1025,6 @@
       if (chassisCameraImg.src !== resolvedStreamUrl) {
         chassisCameraImg.src = resolvedStreamUrl;
       }
-
-      chassisCameraImg.hidden = false;
-      chassisCameraFallback.hidden = true;
     }
 
     async function setTurretBrightness(value) {
@@ -1287,48 +1329,38 @@
       }
     }
 
-    function drawLidar(points = [], maxRangeMm = 5000) {
+    function drawLidarContour(points = [], maxRangeMm = 5000) {
       const { width, height } = lidarCanvas;
       const cx = width / 2;
       const cy = height / 2;
-      const angleBins = 960;
-      const rangeBins = 192;
-      const wedgeWidth = (Math.PI * 2) / angleBins;
-      const heat = new Float32Array(angleBins * rangeBins);
+      const angleBins = 720;
       const latestByAngle = new Array(angleBins).fill(null);
 
-      lidarCtx.clearRect(0, 0, width, height);
-      lidarCtx.fillStyle = "#031017";
+      lidarCtx.fillStyle = "#000";
       lidarCtx.fillRect(0, 0, width, height);
 
-      for (const point of points.slice(-10400)) {
+      for (const point of points) {
         const rotatedAngleDeg = ((point.angle_deg ?? 0) + LIDAR_DISPLAY_OFFSET_DEG + 360) % 360;
-        const bin = Math.floor((rotatedAngleDeg / 360) * angleBins);
-        const existing = latestByAngle[bin];
-        if (!existing || point.distance_mm < existing.distance_mm) {
-          latestByAngle[bin] = {
-            ...point,
-            rotated_angle_deg: rotatedAngleDeg,
-          };
+        const distanceMm = Number(point.distance_mm);
+        if (
+          !Number.isFinite(distanceMm)
+          || isLidarTurretReturn(rotatedAngleDeg, distanceMm)
+        ) {
+          continue;
         }
+        const bin = Math.floor((rotatedAngleDeg / 360) * angleBins);
+        latestByAngle[bin] = { ...point, rotated_angle_deg: rotatedAngleDeg };
       }
 
       const filteredPoints = [];
       for (let i = 0; i < angleBins; i += 1) {
         const current = latestByAngle[i];
-        if (!current) {
-          continue;
-        }
-
+        if (!current) continue;
         let sum = current.distance_mm;
         let count = 1;
-
         for (const neighborOffset of [-1, 1]) {
           const neighbor = latestByAngle[(i + neighborOffset + angleBins) % angleBins];
-          if (!neighbor) {
-            continue;
-          }
-          if (Math.abs(neighbor.distance_mm - current.distance_mm) <= 140) {
+          if (neighbor && Math.abs(neighbor.distance_mm - current.distance_mm) <= 500) {
             sum += neighbor.distance_mm;
             count += 1;
           }
@@ -1343,6 +1375,7 @@
           y: distanceMm * Math.sin(angleRad),
         });
       }
+      filteredPoints.sort((a, b) => a.angle_deg - b.angle_deg);
 
       const sortedDistances = filteredPoints
         .map((point) => point.distance_mm)
@@ -1352,87 +1385,665 @@
         ? Math.min(sortedDistances.length - 1, Math.floor(sortedDistances.length * 0.92))
         : 0;
       const percentileDistance = sortedDistances[percentileIndex] || maxRangeMm;
-      const displayRangeMm = clamp(percentileDistance * 1.25, 400, Math.min(maxRangeMm, 1800));
-      const scale = Math.min(width, height) * 0.42 / displayRangeMm;
+      const displayRangeMm = clamp(percentileDistance * 1.2, 1000, Math.min(maxRangeMm, 10000));
+      const plotRadius = Math.min(width, height) * 0.39;
+      const scale = plotRadius / displayRangeMm;
 
-      for (const point of filteredPoints) {
-        const normalizedRange = clamp(point.distance_mm / displayRangeMm, 0, 0.999);
-        const bin = Math.floor((((point.angle_deg ?? 0) % 360) / 360) * angleBins);
-        const rangeBin = Math.floor(normalizedRange * rangeBins);
-        const index = (bin * rangeBins) + rangeBin;
-        heat[index] += 1.4;
-
-        if (rangeBin + 1 < rangeBins) {
-          heat[index + 1] += 0.4;
-        }
-        if (rangeBin > 0) {
-          heat[index - 1] += 0.28;
-        }
-      }
-
-      for (let angleIndex = 0; angleIndex < angleBins; angleIndex += 1) {
-        for (let rangeIndex = 0; rangeIndex < rangeBins; rangeIndex += 1) {
-          const intensity = heat[(angleIndex * rangeBins) + rangeIndex];
-          if (intensity <= 0.12) {
-            continue;
-          }
-
-          const alpha = clamp(intensity / 3.6, 0.04, 0.78);
-          const glow = clamp(intensity / 4.8, 0, 1);
-          const innerRadius = (rangeIndex / rangeBins) * displayRangeMm * scale;
-          const outerRadius = ((rangeIndex + 1) / rangeBins) * displayRangeMm * scale;
-          const startAngle = (angleIndex / angleBins) * Math.PI * 2;
-          const endAngle = startAngle + wedgeWidth;
-
-          lidarCtx.beginPath();
-          lidarCtx.moveTo(cx, cy);
-          lidarCtx.arc(cx, cy, outerRadius, startAngle, endAngle);
-          lidarCtx.arc(cx, cy, innerRadius, endAngle, startAngle, true);
-          lidarCtx.closePath();
-          lidarCtx.fillStyle = `rgba(${Math.round(40 + (38 * glow))}, ${Math.round(58 + (150 * glow))}, ${Math.round(72 + (183 * glow))}, ${alpha})`;
-          lidarCtx.fill();
-        }
-      }
-
+      // Range rings and orientation labels make this a vehicle-relative map.
       lidarCtx.strokeStyle = "rgba(78, 208, 255, 0.18)";
       lidarCtx.lineWidth = 2;
       for (let i = 1; i <= 4; i += 1) {
+        const ringRadius = plotRadius * i / 4;
         lidarCtx.beginPath();
-        lidarCtx.arc(cx, cy, (displayRangeMm / 4) * i * scale, 0, Math.PI * 2);
+        lidarCtx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        lidarCtx.stroke();
+        lidarCtx.fillStyle = "rgba(180, 218, 231, 0.6)";
+        lidarCtx.font = '18px "Trebuchet MS", "Segoe UI", sans-serif';
+        lidarCtx.fillText(`${Math.round(displayRangeMm * i / 4)} mm`, cx + 8, cy - ringRadius + 22);
+      }
+
+      lidarCtx.beginPath();
+      lidarCtx.moveTo(cx, cy - plotRadius);
+      lidarCtx.lineTo(cx, cy + plotRadius);
+      lidarCtx.moveTo(cx - plotRadius, cy);
+      lidarCtx.lineTo(cx + plotRadius, cy);
+      lidarCtx.stroke();
+
+      const segments = [];
+      let segment = [];
+      for (const point of filteredPoints) {
+        const previous = segment[segment.length - 1];
+        if (
+          previous
+          && (
+            point.angle_deg - previous.angle_deg > 1.5
+            || Math.abs(point.distance_mm - previous.distance_mm) > 700
+          )
+        ) {
+          if (segment.length >= 3) segments.push(segment);
+          segment = [];
+        }
+        segment.push(point);
+      }
+      if (segment.length >= 3) segments.push(segment);
+
+      // Each fan is measured visible space; its outer edge is an obstacle.
+      for (const surface of segments) {
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(cx, cy);
+        for (const point of surface) {
+          lidarCtx.lineTo(cx + point.x * scale, cy - point.y * scale);
+        }
+        lidarCtx.closePath();
+        lidarCtx.fillStyle = "rgba(64, 190, 220, 0.10)";
+        lidarCtx.fill();
+
+        lidarCtx.beginPath();
+        surface.forEach((point, index) => {
+          const x = cx + point.x * scale;
+          const y = cy - point.y * scale;
+          if (index === 0) lidarCtx.moveTo(x, y);
+          else lidarCtx.lineTo(x, y);
+        });
+        const nearestMm = Math.min(...surface.map((point) => point.distance_mm));
+        lidarCtx.strokeStyle = nearestMm < 500
+          ? "#ff6868"
+          : nearestMm < 1200
+            ? "#ffc857"
+            : "#72dcff";
+        lidarCtx.lineWidth = 7;
+        lidarCtx.lineCap = "round";
+        lidarCtx.lineJoin = "round";
+        lidarCtx.shadowColor = lidarCtx.strokeStyle;
+        lidarCtx.shadowBlur = 10;
+        lidarCtx.stroke();
+      }
+      lidarCtx.shadowBlur = 0;
+
+      // ROV marker and forward heading arrow.
+      lidarCtx.fillStyle = "#e7f5fb";
+      lidarCtx.strokeStyle = "#031017";
+      lidarCtx.lineWidth = 3;
+      lidarCtx.beginPath();
+      lidarCtx.moveTo(cx, cy - 24);
+      lidarCtx.lineTo(cx - 16, cy + 18);
+      lidarCtx.lineTo(cx + 16, cy + 18);
+      lidarCtx.closePath();
+      lidarCtx.fill();
+      lidarCtx.stroke();
+
+      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.88)";
+      lidarCtx.font = 'bold 22px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.textAlign = "center";
+      lidarCtx.fillText("FRONT", cx, 34);
+      lidarCtx.fillText("REAR", cx, height - 18);
+      lidarCtx.textAlign = "left";
+      lidarCtx.fillText("LEFT", 18, cy - 10);
+      lidarCtx.textAlign = "right";
+      lidarCtx.fillText("RIGHT", width - 18, cy - 10);
+      lidarCtx.fillStyle = "rgba(180, 218, 231, 0.72)";
+      lidarCtx.font = '18px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.fillText(`range ${(displayRangeMm / 1000).toFixed(1)} m`, width - 18, 34);
+      lidarCtx.textAlign = "start";
+    }
+
+    function drawLidarClearance(points = [], maxRangeMm = 30000) {
+      const { width, height } = lidarCanvas;
+      const cx = width / 2;
+      const cy = height / 2;
+      const plotRadius = Math.min(width, height) * 0.35;
+      const displayRangeMm = 200 * 25.4;
+      const sectorWidth = Math.PI / 8;
+      const sectors = [
+        { label: "RIGHT", shortLabel: "R", angle: 0 },
+        { label: "RIGHT BY FRONT", shortLabel: "R/F", angle: 22.5 },
+        { label: "FRONT RIGHT", shortLabel: "FR", angle: 45 },
+        { label: "FRONT BY RIGHT", shortLabel: "F/R", angle: 67.5 },
+        { label: "FRONT", shortLabel: "F", angle: 90 },
+        { label: "FRONT BY LEFT", shortLabel: "F/L", angle: 112.5 },
+        { label: "FRONT LEFT", shortLabel: "FL", angle: 135 },
+        { label: "LEFT BY FRONT", shortLabel: "L/F", angle: 157.5 },
+        { label: "LEFT", shortLabel: "L", angle: 180 },
+        { label: "LEFT BY REAR", shortLabel: "L/R", angle: 202.5 },
+        { label: "REAR LEFT", shortLabel: "RL", angle: 225 },
+        { label: "REAR BY LEFT", shortLabel: "R/L", angle: 247.5 },
+        { label: "REAR", shortLabel: "REAR", angle: 270 },
+        { label: "REAR BY RIGHT", shortLabel: "R/R", angle: 292.5 },
+        { label: "REAR RIGHT", shortLabel: "RR", angle: 315 },
+        { label: "RIGHT BY REAR", shortLabel: "R/RR", angle: 337.5 },
+      ].map((sector) => ({ ...sector, distances: [] }));
+
+      lidarCtx.fillStyle = "#031017";
+      lidarCtx.fillRect(0, 0, width, height);
+
+      for (const point of points) {
+        const angle = ((point.angle_deg ?? 0) + LIDAR_DISPLAY_OFFSET_DEG + 360) % 360;
+        const sectorIndex = Math.round(angle / 22.5) % 16;
+        const distance = Number(point.distance_mm);
+        if (
+          Number.isFinite(distance)
+          && distance >= 50
+          && !isLidarTurretReturn(angle, distance)
+        ) {
+          sectors[sectorIndex].distances.push(
+            correctedLidarClearance(angle, distance),
+          );
+        }
+      }
+
+      const reliableDistance = (distances) => {
+        if (distances.length < 3) return null;
+        const sorted = [...distances].sort((a, b) => a - b);
+        return sorted[Math.floor((sorted.length - 1) * 0.2)];
+      };
+      const formatDistance = (distanceMm) => {
+        if (distanceMm === null) return "--";
+        return `${Math.round(distanceMm / 25.4)} in`;
+      };
+      const sectorColor = (distanceMm) => {
+        if (distanceMm === null) return "rgba(78, 208, 255, 0.12)";
+        if (distanceMm < 500) return "#ff6868";
+        if (distanceMm < 1200) return "#ffc857";
+        return "#72dcff";
+      };
+
+      // Fixed 40-inch rings keep the display scale stable between scans.
+      lidarCtx.strokeStyle = "rgba(78, 208, 255, 0.16)";
+      lidarCtx.lineWidth = 1.5;
+      lidarCtx.font = '15px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.textAlign = "left";
+      for (let ring = 1; ring <= 5; ring += 1) {
+        const radius = plotRadius * ring / 5;
+        lidarCtx.beginPath();
+        lidarCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+        lidarCtx.stroke();
+        lidarCtx.fillStyle = "rgba(199, 231, 242, 0.72)";
+        lidarCtx.fillText(`${ring * 40} in`, cx + 8, cy - radius + 20);
+      }
+
+      const sectorReadings = sectors.map((sector) => ({
+        ...sector,
+        distanceMm: reliableDistance(sector.distances),
+      }));
+
+      // Render each direction independently; no invented walls between returns.
+      for (const sector of sectorReadings) {
+        const distanceMm = sector.distanceMm;
+        const visibleDistance = distanceMm === null
+          ? displayRangeMm
+          : clamp(distanceMm, 0, displayRangeMm);
+        const radius = Math.max(54, visibleDistance / displayRangeMm * plotRadius);
+        const angleRad = sector.angle * Math.PI / 180;
+        const canvasAngle = -angleRad;
+        const color = sectorColor(distanceMm);
+
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(cx, cy);
+        lidarCtx.arc(
+          cx,
+          cy,
+          radius,
+          canvasAngle - sectorWidth * 0.43,
+          canvasAngle + sectorWidth * 0.43,
+        );
+        lidarCtx.closePath();
+        lidarCtx.globalAlpha = distanceMm !== null && distanceMm < 1200 ? 0.28 : 0.13;
+        lidarCtx.fillStyle = color;
+        lidarCtx.fill();
+        lidarCtx.globalAlpha = 1;
+
+        lidarCtx.strokeStyle = color;
+        lidarCtx.lineWidth = distanceMm !== null && distanceMm < 1200 ? 10 : 7;
+        lidarCtx.lineCap = "round";
+        lidarCtx.beginPath();
+        lidarCtx.arc(
+          cx,
+          cy,
+          radius,
+          canvasAngle - sectorWidth * 0.38,
+          canvasAngle + sectorWidth * 0.38,
+        );
+        lidarCtx.stroke();
+
+        // Keep labels on a fixed compass ring so close obstacles cannot pile
+        // their text on top of the vehicle marker.
+        const labelRadius = plotRadius + 48;
+        const labelX = cx + Math.cos(canvasAngle) * labelRadius;
+        const labelY = cy + Math.sin(canvasAngle) * labelRadius;
+
+        // A solid badge keeps the primary readings legible over rings and arcs.
+        const badgeWidth = 82;
+        const badgeHeight = 50;
+        lidarCtx.fillStyle = "rgba(1, 10, 15, 0.94)";
+        lidarCtx.strokeStyle = color;
+        lidarCtx.lineWidth = 2;
+        lidarCtx.beginPath();
+        lidarCtx.roundRect(
+          labelX - badgeWidth / 2,
+          labelY - badgeHeight / 2,
+          badgeWidth,
+          badgeHeight,
+          9,
+        );
+        lidarCtx.fill();
+        lidarCtx.stroke();
+
+        lidarCtx.fillStyle = "#e7f5fb";
+        lidarCtx.font = 'bold 12px "Trebuchet MS", "Segoe UI", sans-serif';
+        lidarCtx.textAlign = "center";
+        lidarCtx.fillText(sector.shortLabel, labelX, labelY - 6);
+        lidarCtx.fillStyle = color;
+        lidarCtx.font = 'bold 19px "Trebuchet MS", "Segoe UI", sans-serif';
+        lidarCtx.fillText(formatDistance(distanceMm), labelX, labelY + 17);
+      }
+
+      // Vehicle arrow points toward the FRONT sector.
+      lidarCtx.fillStyle = "#e7f5fb";
+      lidarCtx.strokeStyle = "#031017";
+      lidarCtx.lineWidth = 4;
+      lidarCtx.beginPath();
+      lidarCtx.moveTo(cx, cy - 30);
+      lidarCtx.lineTo(cx - 20, cy + 22);
+      lidarCtx.lineTo(cx + 20, cy + 22);
+      lidarCtx.closePath();
+      lidarCtx.fill();
+      lidarCtx.stroke();
+
+      const measuredSectors = sectorReadings.filter((sector) => sector.distanceMm !== null);
+      const nearest = measuredSectors.reduce(
+        (best, sector) => !best || sector.distanceMm < best.distanceMm ? sector : best,
+        null,
+      );
+      const clearest = measuredSectors.reduce(
+        (best, sector) => !best || sector.distanceMm > best.distanceMm ? sector : best,
+        null,
+      );
+      const front = sectorReadings.find((sector) => sector.label === "FRONT");
+
+      lidarCtx.font = 'bold 21px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.textAlign = "left";
+      lidarCtx.fillStyle = front ? sectorColor(front.distanceMm) : "rgba(180, 218, 231, 0.72)";
+      lidarCtx.fillText(`AHEAD  ${formatDistance(front?.distanceMm ?? null)}`, 22, 30);
+      lidarCtx.font = '15px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.fillStyle = "rgba(199, 231, 242, 0.82)";
+      lidarCtx.fillText(
+        nearest
+          ? `Nearest: ${nearest.label.toLowerCase()} · ${formatDistance(nearest.distanceMm)}`
+          : "Waiting for valid returns",
+        22,
+        53,
+      );
+      lidarCtx.textAlign = "right";
+      lidarCtx.fillText(
+        clearest ? `Most clearance: ${clearest.label.toLowerCase()}` : "No directional data",
+        width - 22,
+        30,
+      );
+      lidarCtx.fillText("RED < 20 in   ·   AMBER < 47 in   ·   BLUE clear", width - 22, height - 16);
+      lidarCtx.textAlign = "start";
+    }
+
+    function drawLidarTopDown(points = [], maxRangeMm = 30000) {
+      const { width, height } = lidarCanvas;
+      const cx = width / 2;
+      const cy = height / 2;
+      const displayRangeMm = 6000;
+      const plotRadius = Math.min(width, height) * 0.42;
+      const scale = plotRadius / displayRangeMm;
+
+      lidarCtx.fillStyle = "#031017";
+      lidarCtx.fillRect(0, 0, width, height);
+
+      // A fixed Cartesian grid makes straight walls read as straight walls.
+      lidarCtx.strokeStyle = "rgba(46, 255, 90, 0.10)";
+      lidarCtx.lineWidth = 2;
+      lidarCtx.font = '18px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.fillStyle = "rgba(90, 255, 120, 0.5)";
+      for (let metres = -5; metres <= 5; metres += 1) {
+        const offset = metres * 1000 * scale;
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(cx + offset, cy - plotRadius);
+        lidarCtx.lineTo(cx + offset, cy + plotRadius);
+        lidarCtx.moveTo(cx - plotRadius, cy + offset);
+        lidarCtx.lineTo(cx + plotRadius, cy + offset);
+        lidarCtx.stroke();
+
+        if (metres !== 0) {
+          lidarCtx.fillText(`${Math.abs(metres)} m`, cx + offset + 6, cy + 20);
+        }
+      }
+
+      const scanPoints = points
+        .map((point) => {
+          const distanceMm = Number(point.distance_mm);
+          const angleDeg = ((point.angle_deg ?? 0) + LIDAR_DISPLAY_OFFSET_DEG + 360) % 360;
+          const angleRad = angleDeg * Math.PI / 180;
+          return {
+            angle_deg: angleDeg,
+            distance_mm: distanceMm,
+            x: distanceMm * Math.cos(angleRad),
+            y: distanceMm * Math.sin(angleRad),
+          };
+        })
+        .filter((point) => (
+          Number.isFinite(point.distance_mm)
+          && point.distance_mm >= 50
+          && point.distance_mm <= displayRangeMm
+          && !isLidarTurretReturn(point.angle_deg, point.distance_mm)
+        ))
+        .sort((a, b) => a.angle_deg - b.angle_deg);
+
+      const clusters = [];
+      let currentCluster = [];
+      for (const current of scanPoints) {
+        const previous = currentCluster[currentCluster.length - 1];
+        if (previous) {
+          const angleGap = current.angle_deg - previous.angle_deg;
+          const cartesianGap = Math.hypot(
+            current.x - previous.x,
+            current.y - previous.y,
+          );
+          if (angleGap > 1.5 || cartesianGap > 350) {
+            if (currentCluster.length >= 3) clusters.push(currentCluster);
+            currentCluster = [];
+          }
+        }
+        currentCluster.push(current);
+      }
+      if (currentCluster.length >= 3) clusters.push(currentCluster);
+
+      const drawClusters = (color, lineWidth) => {
+        lidarCtx.strokeStyle = color;
+        lidarCtx.lineWidth = lineWidth;
+        lidarCtx.lineCap = "round";
+        lidarCtx.lineJoin = "round";
+        for (const cluster of clusters) {
+          lidarCtx.beginPath();
+          cluster.forEach((point, index) => {
+            const x = cx + point.x * scale;
+            const y = cy - point.y * scale;
+            if (index === 0) lidarCtx.moveTo(x, y);
+            else lidarCtx.lineTo(x, y);
+          });
+          lidarCtx.stroke();
+        }
+      };
+
+      drawClusters("rgba(20, 255, 75, 0.22)", 10);
+      drawClusters("#27ff58", 3);
+
+      lidarCtx.fillStyle = "#45ff6a";
+      for (const point of scanPoints) {
+        lidarCtx.beginPath();
+        lidarCtx.arc(cx + point.x * scale, cy - point.y * scale, 2, 0, Math.PI * 2);
+        lidarCtx.fill();
+      }
+
+      // Compact return clusters get honest 2D boxes. Long wall runs remain
+      // green scan edges instead of being mislabeled as discrete objects.
+      let obstacleNumber = 0;
+      for (const cluster of clusters) {
+        if (cluster.length < 6) continue;
+        const xs = cluster.map((point) => point.x);
+        const ys = cluster.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const objectWidthMm = maxX - minX;
+        const objectHeightMm = maxY - minY;
+        const largestDimensionMm = Math.max(objectWidthMm, objectHeightMm);
+        if (largestDimensionMm < 80 || largestDimensionMm > 1800) continue;
+
+        obstacleNumber += 1;
+        const nearestMm = Math.min(...cluster.map((point) => point.distance_mm));
+        const color = nearestMm < 500 ? "#ff3030" : "#ff8a20";
+        const boxX = cx + minX * scale - 8;
+        const boxY = cy - maxY * scale - 8;
+        const boxWidth = Math.max(16, objectWidthMm * scale + 16);
+        const boxHeight = Math.max(16, objectHeightMm * scale + 16);
+
+        lidarCtx.strokeStyle = color;
+        lidarCtx.lineWidth = 4;
+        lidarCtx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+        lidarCtx.fillStyle = color;
+        lidarCtx.font = 'bold 17px "Trebuchet MS", "Segoe UI", sans-serif';
+        lidarCtx.textAlign = "left";
+        lidarCtx.fillText(
+          `OBSTACLE ${obstacleNumber}  ${(nearestMm / 1000).toFixed(1)} m`,
+          boxX,
+          Math.max(20, boxY - 8),
+        );
+      }
+
+      // Dark vehicle footprint and heading marker mirror a conventional
+      // robotics point-cloud view.
+      lidarCtx.fillStyle = "#050505";
+      lidarCtx.strokeStyle = "#27ff58";
+      lidarCtx.lineWidth = 3;
+      lidarCtx.beginPath();
+      lidarCtx.ellipse(cx, cy, 44, 58, 0, 0, Math.PI * 2);
+      lidarCtx.fill();
+      lidarCtx.stroke();
+
+      lidarCtx.fillStyle = "#ffc857";
+      lidarCtx.strokeStyle = "#000";
+      lidarCtx.lineWidth = 4;
+      lidarCtx.beginPath();
+      lidarCtx.moveTo(cx, cy - 30);
+      lidarCtx.lineTo(cx - 20, cy + 22);
+      lidarCtx.lineTo(cx + 20, cy + 22);
+      lidarCtx.closePath();
+      lidarCtx.fill();
+      lidarCtx.stroke();
+
+      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.9)";
+      lidarCtx.font = 'bold 22px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.textAlign = "center";
+      lidarCtx.fillText("FRONT", cx, 32);
+      lidarCtx.fillText("REAR", cx, height - 16);
+      lidarCtx.textAlign = "left";
+      lidarCtx.fillText("LEFT", 18, cy - 10);
+      lidarCtx.textAlign = "right";
+      lidarCtx.fillText("RIGHT", width - 18, cy - 10);
+      lidarCtx.font = '18px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.fillStyle = "rgba(180, 218, 231, 0.72)";
+      lidarCtx.fillText("fixed 6 m radius", width - 18, 32);
+      lidarCtx.textAlign = "start";
+    }
+
+    function drawLidar(points = [], maxRangeMm = 30000) {
+      const { width, height } = lidarCanvas;
+      const cx = width * 0.5;
+      const horizonY = height * 0.25;
+      const originY = height * 0.61;
+      const displayRangeMm = 6000;
+      const xyScale = Math.min(width / 15000, height / 7800);
+      const zScale = xyScale * 1.15;
+
+      const project = (x, y, z = 0) => ({
+        x: cx + (x * 0.72 - y * 0.15) * xyScale,
+        y: originY + (x * 0.08 - y * 0.32) * xyScale - z * zScale,
+      });
+
+      lidarCtx.fillStyle = "#000";
+      lidarCtx.fillRect(0, 0, width, height);
+
+      // Perspective ground grid: presentation only; measurements remain 2D.
+      lidarCtx.strokeStyle = "rgba(35, 255, 75, 0.13)";
+      lidarCtx.lineWidth = 1.5;
+      for (let offset = -6000; offset <= 6000; offset += 1000) {
+        const a = project(offset, -6000);
+        const b = project(offset, 6000);
+        const c = project(-6000, offset);
+        const d = project(6000, offset);
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(a.x, a.y);
+        lidarCtx.lineTo(b.x, b.y);
+        lidarCtx.moveTo(c.x, c.y);
+        lidarCtx.lineTo(d.x, d.y);
         lidarCtx.stroke();
       }
 
-      lidarCtx.beginPath();
-      lidarCtx.moveTo(cx, 10);
-      lidarCtx.lineTo(cx, height - 10);
-      lidarCtx.moveTo(10, cy);
-      lidarCtx.lineTo(width - 10, cy);
-      lidarCtx.stroke();
+      const scanPoints = points
+        .map((point) => {
+          const distanceMm = Number(point.distance_mm);
+          const angleDeg = ((point.angle_deg ?? 0) + LIDAR_DISPLAY_OFFSET_DEG + 360) % 360;
+          const angleRad = angleDeg * Math.PI / 180;
+          return {
+            angle_deg: angleDeg,
+            distance_mm: distanceMm,
+            x: distanceMm * Math.cos(angleRad),
+            y: distanceMm * Math.sin(angleRad),
+          };
+        })
+        .filter((point) => (
+          Number.isFinite(point.distance_mm)
+          && point.distance_mm >= 50
+          && point.distance_mm <= displayRangeMm
+          && !isLidarTurretReturn(point.angle_deg, point.distance_mm)
+        ))
+        .sort((a, b) => a.angle_deg - b.angle_deg);
 
-      lidarCtx.fillStyle = "rgba(238, 180, 255, 0.95)";
-      for (const point of filteredPoints) {
-        const x = cx + point.x * scale;
-        const y = cy - point.y * scale;
-        lidarCtx.fillRect(x - 2, y - 2, 4, 4);
+      const clusters = [];
+      let currentCluster = [];
+      for (const current of scanPoints) {
+        const previous = currentCluster[currentCluster.length - 1];
+        if (previous) {
+          const angleGap = current.angle_deg - previous.angle_deg;
+          const cartesianGap = Math.hypot(
+            current.x - previous.x,
+            current.y - previous.y,
+          );
+          if (angleGap > 1.5 || cartesianGap > 350) {
+            if (currentCluster.length >= 3) clusters.push(currentCluster);
+            currentCluster = [];
+          }
+        }
+        currentCluster.push(current);
+      }
+      if (currentCluster.length >= 3) clusters.push(currentCluster);
+
+      // Draw scan returns as a bright measured line on the ground plane.
+      for (const cluster of clusters) {
+        lidarCtx.strokeStyle = "rgba(38, 255, 80, 0.24)";
+        lidarCtx.lineWidth = 10;
+        lidarCtx.lineCap = "round";
+        lidarCtx.lineJoin = "round";
+        for (const lineWidth of [10, 3]) {
+          lidarCtx.lineWidth = lineWidth;
+          lidarCtx.strokeStyle = lineWidth === 10
+            ? "rgba(38, 255, 80, 0.24)"
+            : "#29ff55";
+          lidarCtx.beginPath();
+          cluster.forEach((point, index) => {
+            const screen = project(point.x, point.y);
+            if (index === 0) lidarCtx.moveTo(screen.x, screen.y);
+            else lidarCtx.lineTo(screen.x, screen.y);
+          });
+          lidarCtx.stroke();
+        }
       }
 
+      let obstacleNumber = 0;
+      for (const cluster of clusters) {
+        if (cluster.length < 6) continue;
+        const xs = cluster.map((point) => point.x);
+        const ys = cluster.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const largestDimensionMm = Math.max(maxX - minX, maxY - minY);
+        if (largestDimensionMm < 80 || largestDimensionMm > 1800) continue;
+
+        obstacleNumber += 1;
+        const nearestMm = Math.min(...cluster.map((point) => point.distance_mm));
+        const color = nearestMm < 500 ? "#ff3030" : "#ff7b20";
+        const visualHeightMm = 650;
+        const floorCorners = [
+          project(minX, minY),
+          project(maxX, minY),
+          project(maxX, maxY),
+          project(minX, maxY),
+        ];
+        const topCorners = [
+          project(minX, minY, visualHeightMm),
+          project(maxX, minY, visualHeightMm),
+          project(maxX, maxY, visualHeightMm),
+          project(minX, maxY, visualHeightMm),
+        ];
+
+        lidarCtx.fillStyle = color;
+        lidarCtx.globalAlpha = 0.13;
+        lidarCtx.beginPath();
+        lidarCtx.moveTo(floorCorners[0].x, floorCorners[0].y);
+        for (const corner of floorCorners.slice(1)) lidarCtx.lineTo(corner.x, corner.y);
+        for (const corner of [...topCorners].reverse()) lidarCtx.lineTo(corner.x, corner.y);
+        lidarCtx.closePath();
+        lidarCtx.fill();
+        lidarCtx.globalAlpha = 1;
+
+        lidarCtx.strokeStyle = color;
+        lidarCtx.lineWidth = 3;
+        for (const corners of [floorCorners, topCorners]) {
+          lidarCtx.beginPath();
+          lidarCtx.moveTo(corners[0].x, corners[0].y);
+          for (const corner of corners.slice(1)) lidarCtx.lineTo(corner.x, corner.y);
+          lidarCtx.closePath();
+          lidarCtx.stroke();
+        }
+        for (let i = 0; i < 4; i += 1) {
+          lidarCtx.beginPath();
+          lidarCtx.moveTo(floorCorners[i].x, floorCorners[i].y);
+          lidarCtx.lineTo(topCorners[i].x, topCorners[i].y);
+          lidarCtx.stroke();
+        }
+
+        const label = topCorners.reduce(
+          (best, corner) => corner.y < best.y ? corner : best,
+          topCorners[0],
+        );
+        lidarCtx.fillStyle = color;
+        lidarCtx.font = 'bold 17px "Trebuchet MS", "Segoe UI", sans-serif';
+        lidarCtx.textAlign = "center";
+        lidarCtx.fillText(
+          `CLUSTER ${obstacleNumber} · ${(nearestMm / 1000).toFixed(1)} m`,
+          label.x,
+          label.y - 8,
+        );
+      }
+
+      const vehicle = project(0, 0);
+      lidarCtx.fillStyle = "#060606";
+      lidarCtx.strokeStyle = "#29ff55";
+      lidarCtx.lineWidth = 3;
+      lidarCtx.beginPath();
+      lidarCtx.ellipse(vehicle.x, vehicle.y, 58, 30, 0, 0, Math.PI * 2);
+      lidarCtx.fill();
+      lidarCtx.stroke();
+
+      const nose = project(0, 0, 180);
       lidarCtx.fillStyle = "#ffc857";
       lidarCtx.beginPath();
-      lidarCtx.arc(cx, cy, 6, 0, Math.PI * 2);
+      lidarCtx.moveTo(nose.x, nose.y - 22);
+      lidarCtx.lineTo(nose.x - 14, nose.y + 12);
+      lidarCtx.lineTo(nose.x + 14, nose.y + 12);
+      lidarCtx.closePath();
       lidarCtx.fill();
 
-      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.82)";
-      lidarCtx.font = '24px "Trebuchet MS", "Segoe UI", sans-serif';
-      lidarCtx.fillText("far / low return", 16, height - 18);
-      lidarCtx.fillStyle = "rgba(236, 114, 255, 0.9)";
-      lidarCtx.fillText("near / strong return", 136, height - 18);
-      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.7)";
-      lidarCtx.fillText(`view ${(displayRangeMm / 1000).toFixed(1)} m`, width - 190, 36);
-
-      lidarCtx.fillStyle = "rgba(58, 114, 132, 0.95)";
-      lidarCtx.fillRect(16, height - 48, 36, 16);
-      lidarCtx.fillStyle = "rgba(236, 114, 255, 0.95)";
-      lidarCtx.fillRect(136, height - 48, 36, 16);
+      lidarCtx.fillStyle = "rgba(231, 245, 251, 0.9)";
+      lidarCtx.font = 'bold 22px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.textAlign = "center";
+      lidarCtx.fillText("FRONT", cx, horizonY);
+      lidarCtx.font = '17px "Trebuchet MS", "Segoe UI", sans-serif';
+      lidarCtx.fillStyle = "rgba(180, 218, 231, 0.72)";
+      lidarCtx.fillText(
+        "2D scan in perspective · box height is illustrative, not measured",
+        cx,
+        height - 18,
+      );
+      lidarCtx.textAlign = "start";
     }
 
     function setOfflineState() {
@@ -1475,7 +2086,10 @@
         }
         setTurretOverlay(data);
         updateTurretAlert(data);
-        setText("rangeValue", formatRange(data.turret_telemetry?.range_in));
+        setText("rangeValue", formatRange(correctedTurretRange(
+          data.turret_telemetry?.range_in,
+          data.turret_state?.pan_deg,
+        )));
         setText("frontUltrasonicValue", formatPiUltrasonic(data.pi_ultrasonic?.front));
         setText("rearUltrasonicValue", formatPiUltrasonic(data.pi_ultrasonic?.rear));
         updateRelayCard(motorEnableButton, motorEnableStatus, data.relay_status?.motor_enable, "Motor Enable");
@@ -1500,7 +2114,7 @@
         const data = await response.json();
 
         setOnlineState();
-        drawLidar(data.points || [], data.max_range_mm || 5000);
+        drawLidarClearance(data.points || [], data.max_range_mm || 5000);
       } catch (error) {
         setOfflineState();
       } finally {
@@ -1509,7 +2123,7 @@
     }
 
     function animationLoop(now) {
-      if (!lidarRefreshInFlight && now - lastLidarRefreshStartedAt >= TARGET_FRAME_MS) {
+      if (!lidarRefreshInFlight && now - lastLidarRefreshStartedAt >= LIDAR_REFRESH_MS) {
         refreshLidar();
       }
 
@@ -1520,14 +2134,26 @@
       window.requestAnimationFrame(animationLoop);
     }
 
+    cameraImg.addEventListener("load", () => {
+      cameraImg.hidden = false;
+      cameraFallback.hidden = true;
+    });
+
     cameraImg.addEventListener("error", () => {
       cameraImg.hidden = true;
       cameraFallback.hidden = false;
+      cameraImg.removeAttribute("src");
+    });
+
+    chassisCameraImg.addEventListener("load", () => {
+      chassisCameraImg.hidden = false;
+      chassisCameraFallback.hidden = true;
     });
 
     chassisCameraImg.addEventListener("error", () => {
       chassisCameraImg.hidden = true;
       chassisCameraFallback.hidden = false;
+      chassisCameraImg.removeAttribute("src");
     });
 
     brightnessSlider.addEventListener("input", () => {
