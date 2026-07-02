@@ -90,6 +90,15 @@ class HobbyServoController:
             "tilt_angle": int(parts[4]),
         }
 
+    @staticmethod
+    def _parse_battery(resp: str) -> float:
+        parts = resp.split()
+        if len(parts) not in (2, 3) or parts[0] != "BATTERY":
+            raise RuntimeError(f"unexpected battery response: {resp}")
+        if len(parts) == 3 and parts[2] != "V":
+            raise RuntimeError(f"unexpected battery response: {resp}")
+        return float(parts[1])
+
     def _cmd(self, cmd: str, matcher, timeout: float = 0.8) -> str:
         try:
             resp = self.line.command_matching(
@@ -185,6 +194,13 @@ class HobbyServoController:
                     "last_error": self.last_error,
                 }
             return parsed
+        if "battery_v" not in parsed:
+            battery_resp = self._cmd(
+                "B",
+                lambda line: line.startswith("BATTERY ") or line.startswith("ERR "),
+            )
+            if not battery_resp.startswith("ERR "):
+                parsed["battery_v"] = self._parse_battery(battery_resp)
         parsed["last_command"] = self.last_command
         parsed["last_error"] = self.last_error
         self.last_status = parsed

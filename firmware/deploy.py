@@ -106,10 +106,11 @@ BOARD_CONFIG = {
             {
                 "name": "turret-servos",
                 "sketch": PROJECT_ROOT / "firmware/turret_servos",
-                "fqbn": "SparkFun:avr:promicro:cpu=16MHzatmega32U4",
+                "fqbn": "arduino:avr:leonardo",
                 "ports": TURRET_NANO_PORTS,
-                "touch_1200bps": True,
-                "usb_reenumerate": True,
+                "stop_services": [
+                    "rov-backend.service",
+                ],
             },
         ],
     },
