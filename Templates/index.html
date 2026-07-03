@@ -845,6 +845,7 @@
     let crosshairColor = "green";
     let driveCommandInFlight = false;
     let turretCommandInFlight = false;
+    let turretHomeInFlight = false;
     let driveStopSent = true;
     let brightnessSyncLocked = false;
     let relayCommandInFlight = false;
@@ -875,8 +876,8 @@
     }
 
     function updateTurretHomeButton() {
-      turretSetHomeButton.disabled = turretCommandInFlight;
-      turretHomeButton.disabled = turretCommandInFlight;
+      turretSetHomeButton.disabled = turretHomeInFlight;
+      turretHomeButton.disabled = turretHomeInFlight;
     }
 
     function setBrightnessUi(value) {
@@ -1145,6 +1146,7 @@
         state.y = 0;
         renderStick();
       }
+      state.reset = reset;
 
       base.addEventListener("pointerdown", (event) => {
         syncMetrics();
@@ -1255,7 +1257,7 @@
     }
 
     async function pumpTurretJoystick() {
-      if (turretCommandInFlight) {
+      if (turretCommandInFlight || turretHomeInFlight) {
         return;
       }
 
@@ -1298,11 +1300,12 @@
     }
 
     async function sendTurretHome() {
-      if (turretCommandInFlight) {
+      if (turretHomeInFlight) {
         return;
       }
 
-      turretCommandInFlight = true;
+      turretControlState.reset();
+      turretHomeInFlight = true;
       updateTurretHomeButton();
       try {
         const response = await fetch("/api/turret/home", {
@@ -1328,17 +1331,18 @@
         const message = error?.message || "turret home failed";
         turretReadout.textContent = `Turret error: ${message}`;
       } finally {
-        turretCommandInFlight = false;
+        turretHomeInFlight = false;
         updateTurretHomeButton();
       }
     }
 
     async function setTurretHome() {
-      if (turretCommandInFlight) {
+      if (turretHomeInFlight) {
         return;
       }
 
-      turretCommandInFlight = true;
+      turretControlState.reset();
+      turretHomeInFlight = true;
       updateTurretHomeButton();
       try {
         const response = await fetch("/api/turret/set_home", {
@@ -1357,7 +1361,7 @@
       } catch (error) {
         turretReadout.textContent = `Turret error: ${error?.message || "set home failed"}`;
       } finally {
-        turretCommandInFlight = false;
+        turretHomeInFlight = false;
         updateTurretHomeButton();
       }
     }
