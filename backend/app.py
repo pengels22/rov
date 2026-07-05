@@ -173,6 +173,7 @@ def system_status():
             "POST /api/turret/tilt_zero",
             "POST /api/turret/aim",
             "POST /api/turret/home",
+            "POST /api/turret/set_home",
             "GET /api/power/status",
             "POST /api/power/motor_enable",
             "POST /api/power/battery_kill",
@@ -249,13 +250,26 @@ def move_turret_relative(body):
 
 def move_turret_home(body):
     time_ms = max(120, min(1000, int(body.get("time_ms", 500))))
-    target_pan = SERVO_CENTER_POS
-    target_tilt = SERVO_CENTER_POS
+    target_pan = int(turret_state.pan_home_angle)
+    target_tilt = int(turret_state.tilt_zero_angle)
     result = servos.move_both(target_pan, target_tilt, time_ms)
     turret_state.update_pan_position(target_pan)
     turret_state.update_tilt_position(target_tilt)
     return {
         "servo": result,
+        "turret_state": turret_state.as_dict(),
+    }
+
+def set_turret_home():
+    servo_status = servos.status()
+    pan_position = servo_status["pan"]["position"]
+    tilt_position = servo_status["tilt"]["position"]
+    turret_state.set_home(pan_position, tilt_position)
+    return {
+        "home": {
+            "pan_position": pan_position,
+            "tilt_position": tilt_position,
+        },
         "turret_state": turret_state.as_dict(),
     }
 
@@ -501,6 +515,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/turret/home":
             return ok(move_turret_home(body))
+
+        if path == "/api/turret/set_home":
+            return ok(set_turret_home())
 
         if path == "/api/turret/mark_pan_home":
             turret_state.set_pan_home(body.get("angle", body.get("position")))

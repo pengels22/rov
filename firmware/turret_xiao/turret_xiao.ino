@@ -427,13 +427,13 @@ void initWiFi() {
     Serial.print(saved_ssid);
     Serial.print(",PASS_LEN=");
     Serial.println(saved_pass.length());
-    WiFi.begin(saved_ssid.c_str(), saved_pass.c_str(), 6);
+    WiFi.begin(saved_ssid.c_str(), saved_pass.c_str());
   } else {
     Serial.print("INFO,WIFI_CONNECTING,");
     Serial.print(WIFI_SSID);
     Serial.print(",PASS_LEN=");
     Serial.println(strlen(WIFI_PASS));
-    WiFi.begin(WIFI_SSID, WIFI_PASS,6);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
   }
 
   unsigned long start = millis();

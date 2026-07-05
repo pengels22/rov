@@ -595,6 +595,7 @@
     .turret-action-row {
       display: flex;
       justify-content: center;
+      gap: 8px;
       margin-top: 10px;
     }
 
@@ -728,18 +729,6 @@
             </div>
             <div class="joystick-grid">
               <section class="joystick-card">
-                <h3 class="joystick-title">Drive</h3>
-                <p class="joystick-subtitle">Click or touch and hold to move the chassis.</p>
-                <div class="joystick-shell">
-                  <div class="joystick-base" id="driveJoystick" aria-label="Drive joystick">
-                    <div class="joystick-ring"></div>
-                    <div class="joystick-stick"></div>
-                  </div>
-                </div>
-                <p class="joystick-readout" id="driveReadout">Idle</p>
-              </section>
-
-              <section class="joystick-card">
                 <h3 class="joystick-title">Turret</h3>
                 <p class="joystick-subtitle">Click or touch and hold to pan and tilt continuously.</p>
                 <div class="joystick-shell">
@@ -750,8 +739,21 @@
                 </div>
                 <p class="joystick-readout" id="turretReadout">Idle</p>
                 <div class="turret-action-row">
-                  <button type="button" class="power-button turret-action-button" id="turretHomeButton">Turret Home</button>
+                  <button type="button" class="power-button turret-action-button" id="turretSetHomeButton">Set Home</button>
+                  <button type="button" class="power-button turret-action-button" id="turretHomeButton">Return Home</button>
                 </div>
+              </section>
+
+              <section class="joystick-card">
+                <h3 class="joystick-title">Drive</h3>
+                <p class="joystick-subtitle">Click or touch and hold to move the chassis.</p>
+                <div class="joystick-shell">
+                  <div class="joystick-base" id="driveJoystick" aria-label="Drive joystick">
+                    <div class="joystick-ring"></div>
+                    <div class="joystick-stick"></div>
+                  </div>
+                </div>
+                <p class="joystick-readout" id="driveReadout">Idle</p>
               </section>
             </div>
           </div>
@@ -806,6 +808,7 @@
     const turretJoystick = document.getElementById("turretJoystick");
     const driveReadout = document.getElementById("driveReadout");
     const turretReadout = document.getElementById("turretReadout");
+    const turretSetHomeButton = document.getElementById("turretSetHomeButton");
     const turretHomeButton = document.getElementById("turretHomeButton");
     const motorEnableButton = document.getElementById("motorEnableButton");
     const motorEnableStatus = document.getElementById("motorEnableStatus");
@@ -842,6 +845,7 @@
     let crosshairColor = "green";
     let driveCommandInFlight = false;
     let turretCommandInFlight = false;
+    let turretHomeInFlight = false;
     let driveStopSent = true;
     let brightnessSyncLocked = false;
     let relayCommandInFlight = false;
@@ -872,8 +876,8 @@
     }
 
     function updateTurretHomeButton() {
-      turretHomeButton.disabled = turretCommandInFlight;
-      turretHomeButton.textContent = turretCommandInFlight ? "Homing..." : "Turret Home";
+      turretSetHomeButton.disabled = turretHomeInFlight;
+      turretHomeButton.disabled = turretHomeInFlight;
     }
 
     function setBrightnessUi(value) {
@@ -1142,6 +1146,7 @@
         state.y = 0;
         renderStick();
       }
+      state.reset = reset;
 
       base.addEventListener("pointerdown", (event) => {
         syncMetrics();
@@ -1252,7 +1257,7 @@
     }
 
     async function pumpTurretJoystick() {
-      if (turretCommandInFlight) {
+      if (turretCommandInFlight || turretHomeInFlight) {
         return;
       }
 
@@ -1295,11 +1300,12 @@
     }
 
     async function sendTurretHome() {
-      if (turretCommandInFlight) {
+      if (turretHomeInFlight) {
         return;
       }
 
-      turretCommandInFlight = true;
+      turretControlState.reset();
+      turretHomeInFlight = true;
       updateTurretHomeButton();
       try {
         const response = await fetch("/api/turret/home", {
@@ -1317,7 +1323,7 @@
           setText("flagsValue", message);
           return;
         }
-        turretReadout.textContent = "Home position: Pan +0% | Tilt +0%";
+        turretReadout.textContent = "Home position: Pan 90° | Tilt 90°";
         if (payload?.turret_state) {
           turretOverlay.textContent = `Range ${document.getElementById("rangeValue").textContent} | Pan ${formatDegrees(payload.turret_state.pan_deg)} | Tilt ${formatDegrees(payload.turret_state.tilt_deg)}`;
         }
@@ -1325,7 +1331,37 @@
         const message = error?.message || "turret home failed";
         turretReadout.textContent = `Turret error: ${message}`;
       } finally {
-        turretCommandInFlight = false;
+        turretHomeInFlight = false;
+        updateTurretHomeButton();
+      }
+    }
+
+    async function setTurretHome() {
+      if (turretHomeInFlight) {
+        return;
+      }
+
+      turretControlState.reset();
+      turretHomeInFlight = true;
+      updateTurretHomeButton();
+      try {
+        const response = await fetch("/api/turret/set_home", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const payload = await response.json();
+        if (!response.ok || payload?.ok === false || payload?.error) {
+          throw new Error(payload?.error || "set home failed");
+        }
+        turretReadout.textContent = "Home set: Pan 90° | Tilt 90°";
+        if (payload?.turret_state) {
+          turretOverlay.textContent = `Range ${document.getElementById("rangeValue").textContent} | Pan ${formatDegrees(payload.turret_state.pan_deg)} | Tilt ${formatDegrees(payload.turret_state.tilt_deg)}`;
+        }
+      } catch (error) {
+        turretReadout.textContent = `Turret error: ${error?.message || "set home failed"}`;
+      } finally {
+        turretHomeInFlight = false;
         updateTurretHomeButton();
       }
     }
@@ -2175,6 +2211,10 @@
 
     turretHomeButton.addEventListener("click", () => {
       sendTurretHome();
+    });
+
+    turretSetHomeButton.addEventListener("click", () => {
+      setTurretHome();
     });
 
     crosshairToggle.addEventListener("click", () => {
