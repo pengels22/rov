@@ -65,7 +65,7 @@ def monitor():
                     save_ip(parts[2])
 
 
-def set_wifi(ssid, password, timeout=10):
+def set_wifi(ssid, password, timeout=20):
     cmd = f"SET_WIFI,{ssid},{password}\n"
     print(f"Sending credentials to {PORT}")
     with serial.Serial(PORT, BAUD, timeout=1) as ser:

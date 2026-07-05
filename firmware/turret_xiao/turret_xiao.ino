@@ -409,6 +409,7 @@ void initWiFi() {
 
   WiFi.persistent(false);
   WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(false);
   delay(500);
@@ -720,6 +721,11 @@ void handleSerialCommand(const String& cmd) {
     Serial.print(",PASS_LEN=");
     Serial.println(pass.length());
 
+    // Stop any in-progress automatic reconnect before replacing the station
+    // configuration. WiFi.begin() otherwise fails with "cannot set config".
+    WiFi.disconnect(false);
+    delay(250);
+
     // Attempt to connect
     WiFi.begin(ssid.c_str(), pass.c_str());
     unsigned long start = millis();
@@ -728,9 +734,13 @@ void handleSerialCommand(const String& cmd) {
     }
 
     if (WiFi.status() == WL_CONNECTED) {
+      wifi_ok = true;
+      wifi_mode = "STA";
       Serial.print("OK,WIFI_SET,IP,");
       Serial.println(WiFi.localIP().toString());
     } else {
+      wifi_ok = false;
+      wifi_mode = "STA_FAIL";
       Serial.println("ERR,WIFI_SET_CONNECT_FAIL");
     }
   }
@@ -790,6 +800,14 @@ void loop() {
   runStreamServer();
 
   unsigned long now = millis();
+
+  // Keep dashboard telemetry aligned with the live station state.
+  static unsigned long lastWifiStatusMs = 0;
+  if (now - lastWifiStatusMs >= 1000) {
+    lastWifiStatusMs = now;
+    wifi_ok = WiFi.status() == WL_CONNECTED;
+    wifi_mode = wifi_ok ? "STA" : "STA_FAIL";
+  }
 
   if (now - lastSensorMs >= 100) {
     lastSensorMs = now;
