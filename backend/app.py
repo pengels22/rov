@@ -225,7 +225,7 @@ def system_status():
             "POST /api/turret/set_home",
             "GET /api/power/status",
             "POST /api/power/motor_enable",
-            "POST /api/power/battery_kill",
+            "POST /api/power/shore_power",
             "GET /api/servo/status",
             "POST /api/servo/move",
             "POST /api/servo/center",
@@ -665,10 +665,10 @@ class Handler(BaseHTTPRequestHandler):
                 "relay_status": relays.snapshot(),
             })
 
-        if path == "/api/power/battery_kill":
+        if path in ("/api/power/shore_power", "/api/power/battery_kill"):
             enabled = require_bool(body, "enabled")
             return ok({
-                "relay": relays.set_state("battery_kill", enabled),
+                "relay": relays.set_state("power_source", enabled),
                 "relay_status": relays.snapshot(),
             })
 

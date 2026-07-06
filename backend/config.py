@@ -114,12 +114,15 @@ TILT_SERVO_ID = 2
 # Pi-side relay outputs for power control.
 # These use libgpiod chip names and line offsets, not BCM pin numbers.
 # K1 -> BCM17 -> header PIN_11 -> gpiochip3 line 1
-# K2 -> BCM27 -> header PIN_13 -> gpiochip3 line 2
+# K2 transfer pair -> BCM27 -> header PIN_13 -> gpiochip3 line 2
+# Both physical transfer relays share this GPIO:
+#   GPIO HIGH: battery isolated, shore power enabled
+#   GPIO LOW: shore power isolated, battery enabled
 # Set active_high to False if the relay module energizes on GPIO low.
 MOTOR_ENABLE_RELAY_GPIO_CHIP = "gpiochip3"
 MOTOR_ENABLE_RELAY_GPIO_LINE = 1
 MOTOR_ENABLE_RELAY_ACTIVE_HIGH = False
 
-BATTERY_KILL_RELAY_GPIO_CHIP = "gpiochip3"
-BATTERY_KILL_RELAY_GPIO_LINE = 2
-BATTERY_KILL_RELAY_ACTIVE_HIGH = False
+POWER_SOURCE_RELAY_GPIO_CHIP = "gpiochip3"
+POWER_SOURCE_RELAY_GPIO_LINE = 2
+POWER_SOURCE_RELAY_ACTIVE_HIGH = True

@@ -721,9 +721,9 @@
               </section>
 
               <section class="power-card">
-                <h3 class="power-title">Battery Kill</h3>
-                <p class="power-subtitle">Controls relay K2 for battery kill power.</p>
-                <button type="button" class="power-button is-danger" id="batteryKillButton">Battery Kill Off</button>
+                <h3 class="power-title">Power Source</h3>
+                <p class="power-subtitle">Transfers between battery and shore power.</p>
+                <button type="button" class="power-button" id="batteryKillButton">Battery Power</button>
                 <p class="power-status" id="batteryKillStatus">Unavailable</p>
               </section>
             </div>
@@ -924,6 +924,24 @@
       }
     }
 
+    function updatePowerSourceCard(relay) {
+      const configured = relay?.configured !== false;
+      const available = relay?.available === true;
+      const shoreSelected = relay?.selected_source === "shore";
+      batteryKillButton.disabled = !available || relayCommandInFlight;
+      batteryKillButton.classList.toggle("is-on", shoreSelected);
+      batteryKillButton.textContent = shoreSelected ? "Shore Power" : "Battery Power";
+      if (!configured) {
+        batteryKillStatus.textContent = "Not configured";
+      } else if (!available) {
+        batteryKillStatus.textContent = relay?.last_error || "Unavailable";
+      } else {
+        batteryKillStatus.textContent = shoreSelected
+          ? "Battery isolated; shore enabled"
+          : "Shore isolated; battery enabled";
+      }
+    }
+
     function applyCrosshairColor(colorName) {
       const nextColor = CROSSHAIR_COLORS[colorName] ? colorName : "green";
       crosshairColor = nextColor;
@@ -1087,7 +1105,7 @@
           body: JSON.stringify({ enabled }),
         });
         updateRelayCard(motorEnableButton, motorEnableStatus, payload.relay_status?.motor_enable, "Motor Enable");
-        updateRelayCard(batteryKillButton, batteryKillStatus, payload.relay_status?.battery_kill, "Battery Kill");
+        updatePowerSourceCard(payload.relay_status?.power_source);
       } catch (error) {
         turretAlert.hidden = false;
         turretAlert.textContent = `Relay update failed: ${error.message}`;
@@ -2150,7 +2168,7 @@
       setText("flagsValue", "backend offline");
       setText("servoBatteryStatus", "--");
       updateRelayCard(motorEnableButton, motorEnableStatus, null, "Motor Enable");
-      updateRelayCard(batteryKillButton, batteryKillStatus, null, "Battery Kill");
+      updatePowerSourceCard(null);
     }
 
     function setOnlineState() {
@@ -2188,7 +2206,7 @@
         )));
         setText("servoBatteryStatus", formatBatteryVoltage(data.servo_battery_v ?? data.servo_status?.battery_v));
         updateRelayCard(motorEnableButton, motorEnableStatus, data.relay_status?.motor_enable, "Motor Enable");
-        updateRelayCard(batteryKillButton, batteryKillStatus, data.relay_status?.battery_kill, "Battery Kill");
+        updatePowerSourceCard(data.relay_status?.power_source);
       } catch (error) {
         setOfflineState();
       } finally {
@@ -2270,7 +2288,7 @@
 
     batteryKillButton.addEventListener("click", () => {
       const nextEnabled = !batteryKillButton.classList.contains("is-on");
-      setRelayState("/api/power/battery_kill", nextEnabled);
+      setRelayState("/api/power/shore_power", nextEnabled);
     });
 
     turretHomeButton.addEventListener("click", () => {

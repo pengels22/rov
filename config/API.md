@@ -39,7 +39,7 @@ Implemented in `backend/app.py`.
 - `/api/turret/home`
 - `/api/turret/mark_pan_home`
 - `/api/power/motor_enable`
-- `/api/power/battery_kill`
+- `/api/power/shore_power`
 - `/api/servo/move`
 - `/api/servo/center`
 

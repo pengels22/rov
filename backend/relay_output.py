@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from config import (
-    BATTERY_KILL_RELAY_ACTIVE_HIGH,
-    BATTERY_KILL_RELAY_GPIO_CHIP,
-    BATTERY_KILL_RELAY_GPIO_LINE,
+    POWER_SOURCE_RELAY_ACTIVE_HIGH,
+    POWER_SOURCE_RELAY_GPIO_CHIP,
+    POWER_SOURCE_RELAY_GPIO_LINE,
     MOTOR_ENABLE_RELAY_ACTIVE_HIGH,
     MOTOR_ENABLE_RELAY_GPIO_CHIP,
     MOTOR_ENABLE_RELAY_GPIO_LINE,
@@ -96,12 +96,12 @@ class RelayController:
                 line_offset=MOTOR_ENABLE_RELAY_GPIO_LINE,
                 active_high=bool(MOTOR_ENABLE_RELAY_ACTIVE_HIGH),
             ),
-            "battery_kill": _RelaySpec(
-                key="battery_kill",
-                label="Battery Kill",
-                chip=BATTERY_KILL_RELAY_GPIO_CHIP,
-                line_offset=BATTERY_KILL_RELAY_GPIO_LINE,
-                active_high=bool(BATTERY_KILL_RELAY_ACTIVE_HIGH),
+            "power_source": _RelaySpec(
+                key="power_source",
+                label="Shore Power Select",
+                chip=POWER_SOURCE_RELAY_GPIO_CHIP,
+                line_offset=POWER_SOURCE_RELAY_GPIO_LINE,
+                active_high=bool(POWER_SOURCE_RELAY_ACTIVE_HIGH),
             ),
         }
         self._initialize()
@@ -178,7 +178,16 @@ class RelayController:
                 "ok": self.last_error is None,
                 "last_error": self.last_error,
                 "motor_enable": self._spec_to_dict(self._relays["motor_enable"]),
-                "battery_kill": self._spec_to_dict(self._relays["battery_kill"]),
+                "power_source": {
+                    **self._spec_to_dict(self._relays["power_source"]),
+                    "selected_source": (
+                        "shore"
+                        if self._relays["power_source"].state
+                        else "battery"
+                    ),
+                    "battery_isolated": self._relays["power_source"].state,
+                    "shore_isolated": not self._relays["power_source"].state,
+                },
             }
 
     def set_state(self, key: str, enabled: bool) -> Dict[str, Any]:

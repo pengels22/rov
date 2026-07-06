@@ -175,7 +175,7 @@ Notes:
 - `POST /api/turret/tilt_zero`
 - `GET /api/power/status`
 - `POST /api/power/motor_enable`
-- `POST /api/power/battery_kill`
+- `POST /api/power/shore_power`
 - `GET /api/servo/status`
 - `POST /api/servo/move`
 - `POST /api/servo/center`
