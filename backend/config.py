@@ -87,20 +87,6 @@ CHASSIS_CAMERA_COMMANDS = [
     ],
 ]
 
-# Pi-side ultrasonic sensors.
-# Leave any line as None until the wiring is confirmed.
-# These use libgpiod chip names and line offsets, not BCM pin numbers.
-ULTRASONIC_REFRESH_MS = 250
-ULTRASONIC_ECHO_TIMEOUT_MS = 45
-ULTRASONIC_FRONT_TRIGGER_CHIP = "gpiochip3"  # Pi BCM23 -> header PIN_16
-ULTRASONIC_FRONT_TRIGGER_LINE = 9
-ULTRASONIC_FRONT_ECHO_CHIP = "gpiochip3"     # Pi BCM24 -> header PIN_18
-ULTRASONIC_FRONT_ECHO_LINE = 10
-ULTRASONIC_REAR_TRIGGER_CHIP = "gpiochip3"   # Pi BCM25 -> header PIN_22
-ULTRASONIC_REAR_TRIGGER_LINE = 17
-ULTRASONIC_REAR_ECHO_CHIP = "gpiochip4"      # Pi BCM8 -> header PIN_24
-ULTRASONIC_REAR_ECHO_LINE = 22
-
 # Dedicated turret controller firmware on a serial-connected Pro Micro.
 # Pan is open-loop motor speed; tilt is an absolute servo angle:
 #   P-30

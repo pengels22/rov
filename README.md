@@ -139,15 +139,6 @@ Power-source transfer logic:
 | LOW | Battery enabled | Shore isolated |
 | HIGH | Battery isolated | Shore enabled |
 
-Pi ultrasonic sensors:
-
-| Sensor | Signal | Header pin | BCM | libgpiod chip / line |
-|---|---|---:|---:|---|
-| Front | Trigger | PIN 16 | BCM23 | `gpiochip3` line `9` |
-| Front | Echo | PIN 18 | BCM24 | `gpiochip3` line `10` |
-| Rear | Trigger | PIN 22 | BCM25 | `gpiochip3` line `17` |
-| Rear | Echo | PIN 24 | BCM8 | `gpiochip4` line `22` |
-
 ## What The Backend Does
 
 The backend exposes a small HTTP API for:
@@ -156,8 +147,8 @@ The backend exposes a small HTTP API for:
 - turret status and telemetry
 - servo movement
 - relay-based power control
-- Pi ultrasonic sensor reads
 - LiDAR status
+- turret ToF range telemetry
 - chassis camera stream proxying
 - persistent command/system logs
 
@@ -169,7 +160,7 @@ Pi-side runtime:
 
 - Python 3
 - `pyserial`
-- `libgpiod` tools such as `gpiomon` and `gpioset` for GPIO-backed relays and ultrasonics
+- `libgpiod` tools for GPIO-backed relays
 - `rpicam-vid` or `libcamera-vid` for the Rock 3C CSI chassis camera stream
 
 Firmware deployment:
@@ -181,7 +172,7 @@ Firmware deployment:
 
 ## Configuration
 
-Hardware serial ports, HTTP bind settings, relay GPIO assignments, and ultrasonic line mappings live in [backend/config.py](/home/pi/ROV/backend/config.py).
+Hardware serial ports, HTTP bind settings, and relay GPIO assignments live in [backend/config.py](/home/pi/ROV/backend/config.py).
 
 Before running on different hardware, review at least:
 
@@ -193,7 +184,6 @@ Before running on different hardware, review at least:
 - `CHASSIS_CAMERA_COMMANDS`
 - `HTTP_HOST`
 - `HTTP_PORT`
-- ultrasonic chip and line values
 - relay chip and line values
 
 ## Running The Backend

@@ -296,7 +296,6 @@ void handleStatus() {
   json += "\"accel_ok\":" + String(accel_ok ? "true" : "false") + ",";
   json += "\"accel_type\":\"" + accel_type + "\",";
   json += "\"tof_ok\":" + String(tof_ok ? "true" : "false") + ",";
-  json += "\"ultrasonic_ok\":" + String(tof_ok ? "true" : "false") + ",";
   json += "\"range_in\":" + String(range_in, 2) + ",";
   json += "\"ax\":" + String(ax_g, 3) + ",";
   json += "\"ay\":" + String(ay_g, 3) + ",";
@@ -647,8 +646,7 @@ void printTelemetry() {
   String flags = "";
   flags += camera_ok ? "C1" : "C0";
   flags += accel_ok ? "_A1" : "_A0";
-  // Keep the legacy U flag so existing Pi-side parsers do not need to change.
-  flags += tof_ok ? "_U1" : "_U0";
+  flags += tof_ok ? "_T1" : "_T0";
   flags += wifi_ok ? "_W1" : "_W0";
 
   Serial.print("T,");
@@ -674,8 +672,7 @@ void handleSerialCommand(const String& cmd) {
     Serial.print(WiFi.localIP()); Serial.print(",");
     Serial.print(camera_ok ? "CAM_OK" : "CAM_ERR"); Serial.print(",");
     Serial.print(accel_ok ? accel_type : "ACCEL_ERR"); Serial.print(",");
-    // Preserve the legacy field name in the STATUS response for compatibility.
-    Serial.println(tof_ok ? "US_OK" : "US_ERR");
+    Serial.println(tof_ok ? "TOF_OK" : "TOF_ERR");
   }
   else if (cmd == "ACCEL_REINIT") {
     initAccel();

@@ -1002,16 +1002,6 @@
       return Math.max(0, range - offset);
     }
 
-    function formatPiUltrasonic(sensor) {
-      if (!sensor || sensor.configured === false) {
-        return "Not wired";
-      }
-      if (sensor.ok && sensor.distance_in != null) {
-        return `${sensor.distance_in.toFixed(1)} in`;
-      }
-      return sensor.status || "--";
-    }
-
     function setTurretOverlay(data) {
       const range = formatRange(correctedTurretRange(
         data.turret_telemetry?.range_in,
@@ -1035,7 +1025,7 @@
       } else {
         if (telemetry.camera_ok === false) issues.push("camera fault");
         if (telemetry.accel_ok === false) issues.push("accelerometer fault");
-        if (telemetry.ultrasonic_ok === false) issues.push("range sensor fault");
+        if (telemetry.tof_ok === false) issues.push("ToF sensor fault");
         if (telemetry.wifi_ok === false) issues.push("wifi fault");
       }
       if (servoStatus.last_error) {

@@ -9,7 +9,7 @@ class TurretController:
 
     turret_xiao.ino expects:
       PING -> OK,TURRET
-      STATUS -> STATUS,<wifi_mode>,<ip>,<cam>,<accel>,<ultrasonic>
+      STATUS -> STATUS,<wifi_mode>,<ip>,<cam>,<accel>,<tof>
       Q -> T,<ax>,<ay>,<az>,<range_in>,<pitch_deg>,<roll_deg>,<flags>
       ACCEL_REINIT
       CAM_REINIT
@@ -98,7 +98,7 @@ class TurretController:
 
     @staticmethod
     def _parse_status(resp: str) -> Dict[str, Any]:
-        # STATUS,STA,192.168.1.240,CAM_OK,ACCEL_ERR,US_ERR
+        # STATUS,STA,192.168.1.240,CAM_OK,ACCEL_ERR,TOF_OK
         parts = resp.split(",")
         if len(parts) < 6 or parts[0] != "STATUS":
             return {"raw": resp, "parse_error": True}
@@ -109,10 +109,10 @@ class TurretController:
             "ip": parts[2],
             "camera": parts[3],
             "accelerometer": parts[4],
-            "ultrasonic": parts[5],
+            "tof": parts[5],
             "camera_ok": parts[3] == "CAM_OK",
             "accel_ok": not parts[4].endswith("ERR"),
-            "ultrasonic_ok": parts[5] == "US_OK",
+            "tof_ok": parts[5] == "TOF_OK",
         }
 
     @staticmethod
@@ -134,6 +134,6 @@ class TurretController:
             "flags": flags,
             "camera_ok": "C1" in flags,
             "accel_ok": "A1" in flags,
-            "ultrasonic_ok": "U1" in flags,
+            "tof_ok": "T1" in flags,
             "wifi_ok": "W1" in flags,
         }

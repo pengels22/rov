@@ -26,7 +26,6 @@ from turret import TurretController
 from servo_backend import ServoController
 from relay_output import RelayController
 from turret_state import TurretState
-from ultrasonic import PiUltrasonicService
 from chassis_camera import ChassisCameraService
 from validation import require_bool
 from auth import SessionAuth
@@ -75,7 +74,6 @@ drive_safety = DriveSafetySupervisor(
 )
 turret_state = TurretState()
 lidar = LidarService()
-ultrasonic = PiUltrasonicService()
 chassis_camera = ChassisCameraService()
 session_auth = SessionAuth(
     AUTH_USERNAME,
@@ -239,7 +237,6 @@ def system_status():
             "brightness": turret.camera_brightness,
         },
         "chassis_camera": chassis_camera.status(),
-        "pi_ultrasonic": ultrasonic.snapshot(),
         "lidar": lidar.snapshot(),
         "last": {
             "drive": drive.last_status,
