@@ -2,7 +2,6 @@
 import argparse
 import glob
 import os
-import re
 import subprocess
 import sys
 import time
@@ -15,7 +14,7 @@ except Exception:
 
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parent.parent
+PROJECT_ROOT = SCRIPT_PATH.parent
 ARDUINO_CLI = Path(os.environ.get("ARDUINO_CLI", str(Path.home() / ".local/bin/arduino-cli")))
 
 DRIVE_NANO_PORTS = [
@@ -24,8 +23,6 @@ DRIVE_NANO_PORTS = [
 TURRET_XIAO_PORTS = [
     "/dev/rov/turret",
 ]
-RESET_RELAY_CMD = "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0"
-
 FLAG_TARGETS = {
     "turret_xiao": "turret",
     "drive_nano": "drive",
@@ -95,11 +92,6 @@ BOARD_CONFIG = {
                 "stop_services": [
                     "rov-backend.service",
                 ],
-                # Optional command to toggle an external relay/reset line before upload.
-                # Can be a string (shell command) or a list (argv style).
-                # Example using libgpiod `gpioset` to toggle gpiochip3 line 5 (GPIO3_A5):
-                # "reset_cmd": "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0",
-                "reset_cmd": RESET_RELAY_CMD,
             },
         ],
     },
@@ -116,13 +108,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Compile and optionally upload Arduino firmware for a configured target. "
-            "Examples: `python3 firmware/deploy.py -d`, "
-            "`python3 firmware/deploy.py -t`, "
-            "`python3 firmware/deploy.py -ts`, "
-            "`python3 firmware/deploy.py -ds`, "
-            "`python3 firmware/deploy.py -bl`, "
-            "`python3 firmware/deploy.py -b`, "
-            "`python3 firmware/deploy.py -a`."
+            "Examples: `python3 deploy.py -d`, "
+            "`python3 deploy.py -t`, "
+            "`python3 deploy.py -ts`, "
+            "`python3 deploy.py -ds`, "
+            "`python3 deploy.py -bl`, "
+            "`python3 deploy.py -b`, "
+            "`python3 deploy.py -a`."
         )
     )
     parser.add_argument(
@@ -221,7 +213,7 @@ def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
 
     if args.arg1 in ("compile", "upload"):
         if not args.arg2:
-            raise SystemExit("Usage: python3 firmware/deploy.py compile|upload drive|turret")
+            raise SystemExit("Usage: python3 deploy.py compile|upload drive|turret")
         mode = args.arg1
         targets = [args.arg2]
     else:
@@ -347,16 +339,6 @@ def follow_backend_logs(service: str) -> None:
         print("\n[logs] Log follow stopped.")
 
 
-def wait_for_ports_to_clear(patterns: list[str], timeout_s: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if not matching_ports(patterns):
-            return
-        time.sleep(0.25)
-
-    print("[serial] Warning: port did not disappear before timeout; continuing")
-
-
 def wait_for_port(patterns: list[str], timeout_s: float = 10.0) -> str:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
@@ -365,50 +347,6 @@ def wait_for_port(patterns: list[str], timeout_s: float = 10.0) -> str:
             return matches[0]
         time.sleep(0.25)
     return find_port("reappearing-device", patterns)
-
-
-def resolve_usb_device_id(port: str) -> str | None:
-    try:
-        tty_name = Path(os.path.realpath(port)).name
-        sys_tty = Path(f"/sys/class/tty/{tty_name}/device").resolve()
-    except Exception:
-        return None
-
-    candidates = [sys_tty, *sys_tty.parents]
-    pattern = re.compile(r"^\d+-\d+(?:\.\d+)*$")
-    for candidate in candidates:
-        if pattern.match(candidate.name):
-            return candidate.name
-    return None
-
-
-def reenumerate_usb_device(port: str) -> None:
-    device_id = resolve_usb_device_id(port)
-    if not device_id:
-        print(f"[usb-reset] Could not resolve USB device for {port}; skipping re-enumeration")
-        return
-
-    authorized_path = Path(f"/sys/bus/usb/devices/{device_id}/authorized")
-    if not authorized_path.exists():
-        print(f"[usb-reset] {authorized_path} not present; skipping re-enumeration")
-        return
-
-    print(f"[usb-reset] Re-enumerating USB device {device_id} for {port}")
-    try:
-        subprocess.run(
-            ["sudo", "sh", "-c", f"echo 0 > {authorized_path}"],
-            check=True,
-            text=True,
-        )
-        time.sleep(1.0)
-        subprocess.run(
-            ["sudo", "sh", "-c", f"echo 1 > {authorized_path}"],
-            check=True,
-            text=True,
-        )
-        time.sleep(2.0)
-    except Exception as exc:
-        print(f"[usb-reset] Warning: USB re-enumeration failed: {exc}")
 
 
 def deploy_target(mode: str, target: str) -> None:
@@ -449,20 +387,6 @@ def deploy_target(mode: str, target: str) -> None:
             sketch = str(board["sketch"])
             fqbn = board["fqbn"]
             print(f"Upload port for {board['name']}: {port}")
-
-            # Optional: run a reset/toggle command (e.g., flip a relay) to reset the target board.
-            # Run this after compile and before upload, then wait for the serial port to reappear.
-            if board.get("reset_cmd"):
-                rc = board["reset_cmd"]
-                if isinstance(rc, str):
-                    run_command(["sh", "-c", rc], f"reset:{board['name']}")
-                else:
-                    run_command(rc, f"reset:{board['name']}")
-
-                # Give the device a moment to reset and re-enumerate, then wait for the port.
-                wait_for_ports_to_clear(board["ports"])
-                port = wait_for_port(board["ports"], timeout_s=10.0)
-                print(f"Reset/toggle complete, device ready for {board['name']}: {port}")
 
             upload_cmd = [str(ARDUINO_CLI), "upload", "-p", port, "--fqbn", fqbn, sketch]
             run_command(upload_cmd, f"upload:{board['name']}")

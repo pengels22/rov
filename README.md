@@ -2,61 +2,59 @@
 
 This repository contains the Raspberry Pi backend and Arduino firmware used to control the ROV drive system, turret, servos, relays, and attached sensors.
 
-## Repo Layout
+## Deploy Flag Commands
 
-- `backend/` - Python HTTP API and hardware control code that runs on the Pi
-- `firmware/drive_nano/` - drive controller firmware
-- `firmware/turret_xiao/` - turret controller firmware
-- `firmware/turret_servos/` - dedicated servo controller firmware
-- `firmware/deploy.py` - compile/upload helper for the firmware targets and Pi service restart
-- `config/` - runtime config files such as saved turret IP state
-- `Templates/` - frontend template served by the backend
+Use [deploy.py](/home/pi/ROV/deploy.py) from the repo root.
 
-## What The Backend Does
+| Flag / command | Action |
+|---|---|
+| `python3 deploy.py -t` | Build and upload the turret XIAO ESP32S3 Sense firmware |
+| `python3 deploy.py -d` | Build and upload the drive Nano ESP32 firmware |
+| `python3 deploy.py -b` | Restart `rov-backend.service` |
+| `python3 deploy.py -ts` | Show turret XIAO serial output |
+| `python3 deploy.py -ds` | Show drive Nano ESP32 serial output |
+| `python3 deploy.py -bl` | Follow backend systemd logs |
+| `python3 deploy.py -a` | Build/upload all CLI-supported firmware targets, then restart backend |
+| `python3 deploy.py --compile-only drive` | Compile drive firmware without upload |
+| `python3 deploy.py --compile-only turret` | Compile turret XIAO firmware without upload |
 
-The backend exposes a small HTTP API for:
+Legacy positional forms still work:
 
-- drive commands
-- turret status and telemetry
-- servo movement
-- relay-based power control
-- Pi ultrasonic sensor reads
-- LiDAR status
+```bash
+python3 deploy.py drive
+python3 deploy.py turret
+python3 deploy.py pi
+python3 deploy.py upload drive
+python3 deploy.py compile turret
+```
 
-The main entrypoint is [backend/app.py](/home/pi/ROV/backend/app.py), and the shipped systemd unit is [backend/rov-backend.service](/home/pi/ROV/backend/rov-backend.service).
+Notes:
 
-## Requirements
+- Uploading `drive` or `turret` stops `rov-backend.service` before flashing and starts it again afterward.
+- The script looks for board ports using the `/dev/rov/...` udev aliases.
+- `turret_servos.ino` is intentionally excluded from CLI deployment and must be uploaded manually.
 
-Pi-side runtime:
+## Common API Endpoints
 
-- Python 3
-- `pyserial`
-- `libgpiod` tools such as `gpiomon` and `gpioset` for GPIO-backed relays and ultrasonics
-- `rpicam-vid` or `libcamera-vid` for the Rock 3C CSI chassis camera stream
-
-Firmware deployment:
-
-- `arduino-cli`
-- board packages for:
-  - `arduino:esp32:nano_nora`
-  - `esp32:esp32:XIAO_ESP32S3`
-
-## Configuration
-
-Hardware serial ports, HTTP bind settings, relay GPIO assignments, and ultrasonic line mappings live in [backend/config.py](/home/pi/ROV/backend/config.py).
-
-Before running on different hardware, review at least:
-
-- `DRIVE_PORT`
-- `TURRET_PORT`
-- `TURRET_SERVO_PORT`
-- `LIDAR_PORT`
-- `CHASSIS_CAMERA_ENABLED`
-- `CHASSIS_CAMERA_COMMANDS`
-- `HTTP_HOST`
-- `HTTP_PORT`
-- ultrasonic chip and line values
-- relay chip and line values
+- `GET /api/status`
+- `GET /api/logs`
+- `GET /api/drive/status`
+- `POST /api/drive/joy`
+- `POST /api/drive/move`
+- `POST /api/drive/stop`
+- `POST /api/drive/leds`
+- `GET /api/turret/status`
+- `GET /api/turret/telemetry`
+- `POST /api/turret/aim`
+- `POST /api/turret/tilt_zero`
+- `GET /api/power/status`
+- `POST /api/power/motor_enable`
+- `POST /api/power/shore_power`
+- `GET /api/servo/status`
+- `POST /api/servo/move`
+- `POST /api/servo/center`
+- `GET /api/chassis/camera/status`
+- `GET /api/chassis/camera/stream`
 
 ## Hardware Pinouts
 
@@ -123,27 +121,6 @@ Source: [firmware/turret_xiao/turret_xiao.ino](/home/pi/ROV/firmware/turret_xiao
 | I2C SCL | `SCL` | ToF range sensor bus |
 | VL53L1X ToF address | `0x29` | I2C device address |
 
-Camera pin mapping:
-
-| Camera signal | ESP32S3 GPIO |
-|---|---:|
-| XCLK | GPIO10 |
-| SIOD / SDA | GPIO40 |
-| SIOC / SCL | GPIO39 |
-| Y9 | GPIO48 |
-| Y8 | GPIO11 |
-| Y7 | GPIO12 |
-| Y6 | GPIO14 |
-| Y5 | GPIO16 |
-| Y4 | GPIO18 |
-| Y3 | GPIO17 |
-| Y2 | GPIO15 |
-| VSYNC | GPIO38 |
-| HREF | GPIO47 |
-| PCLK | GPIO13 |
-| PWDN | Not used / `-1` |
-| RESET | Not used / `-1` |
-
 ### Rock 3C / Pi-side GPIO
 
 Source: [backend/config.py](/home/pi/ROV/backend/config.py)
@@ -171,11 +148,53 @@ Pi ultrasonic sensors:
 | Rear | Trigger | PIN 22 | BCM25 | `gpiochip3` line `17` |
 | Rear | Echo | PIN 24 | BCM8 | `gpiochip4` line `22` |
 
-Deploy/reset helper:
+## What The Backend Does
 
-| Function | libgpiod chip / line | Notes |
-|---|---|---|
-| Turret upload reset relay | `gpiochip3` line `5` | Toggled by [firmware/deploy.py](/home/pi/ROV/firmware/deploy.py) before turret upload |
+The backend exposes a small HTTP API for:
+
+- drive commands
+- turret status and telemetry
+- servo movement
+- relay-based power control
+- Pi ultrasonic sensor reads
+- LiDAR status
+- chassis camera stream proxying
+- persistent command/system logs
+
+The main entrypoint is [backend/app.py](/home/pi/ROV/backend/app.py), and the shipped systemd unit is [backend/rov-backend.service](/home/pi/ROV/backend/rov-backend.service).
+
+## Requirements
+
+Pi-side runtime:
+
+- Python 3
+- `pyserial`
+- `libgpiod` tools such as `gpiomon` and `gpioset` for GPIO-backed relays and ultrasonics
+- `rpicam-vid` or `libcamera-vid` for the Rock 3C CSI chassis camera stream
+
+Firmware deployment:
+
+- `arduino-cli`
+- board packages for:
+  - `arduino:esp32:nano_nora`
+  - `esp32:esp32:XIAO_ESP32S3`
+
+## Configuration
+
+Hardware serial ports, HTTP bind settings, relay GPIO assignments, and ultrasonic line mappings live in [backend/config.py](/home/pi/ROV/backend/config.py).
+
+Before running on different hardware, review at least:
+
+- `DRIVE_PORT`
+- `TURRET_PORT`
+- `TURRET_SERVO_PORT`
+- `LIDAR_PORT`
+- `CHASSIS_CAMERA_ENABLED`
+- `CHASSIS_CAMERA_COMMANDS`
+- `HTTP_HOST`
+- `HTTP_PORT`
+- ultrasonic chip and line values
+- relay chip and line values
 
 ## Running The Backend
 
@@ -230,77 +249,101 @@ sudo systemctl status rov-backend.service
 sudo journalctl -u rov-backend.service -f
 ```
 
-## Firmware Deployment
+## API Examples
 
-Use [firmware/deploy.py](/home/pi/ROV/firmware/deploy.py) from the repo root.
+If dashboard auth is enabled, browser requests use the login session cookie.
+For direct `curl` testing, run from a trusted maintenance session with auth
+disabled or add cookie handling after logging in.
 
-Compile and upload a target:
+### Safe servo tests
 
-```bash
-python3 firmware/deploy.py drive
-python3 firmware/deploy.py turret
-python3 firmware/deploy.py -a
-```
+The dedicated servo controller uses signed pan motor speed (`-100..100`) and
+absolute tilt-servo angle (`0..180`). Always stop pan explicitly after a test.
 
-Print controller serial output (press Ctrl+C to stop and restart the backend):
-
-```bash
-python3 firmware/deploy.py -ts   # turret XIAO
-python3 firmware/deploy.py -ds   # drive Nano ESP32
-python3 firmware/deploy.py -bl   # follow backend service logs
-```
-
-If you are already in `/home/pi/ROV/firmware`, run `python3 deploy.py -a`.
-For module mode, use `python3 -m deploy -a`; do not include the `.py` suffix.
-
-Compile only:
+First physical tilt test:
 
 ```bash
-python3 firmware/deploy.py --compile-only drive
-python3 firmware/deploy.py --compile-only turret
+curl -X POST http://ROV.local:8080/api/servo/move \
+  -H 'Content-Type: application/json' \
+  -d '{"id":2,"angle":90}'
 ```
 
-Legacy explicit form:
+Brief low-speed pan test:
 
 ```bash
-python3 firmware/deploy.py upload drive
-python3 firmware/deploy.py compile turret
+curl -X POST http://ROV.local:8080/api/servo/move \
+  -H 'Content-Type: application/json' \
+  -d '{"id":1,"speed":10}'
 ```
 
-Restart the Pi backend service only:
+Stop pan:
 
 ```bash
-python3 firmware/deploy.py pi
+curl -X POST http://ROV.local:8080/api/turret/stop \
+  -H 'Content-Type: application/json' \
+  -d '{}'
 ```
 
-Notes:
+Home turret:
 
-- uploading the `turret` target stops `rov-backend.service` before flashing and starts it again afterward
-- the script looks for board ports using the `/dev/rov/...` udev aliases
-- `turret_servos.ino` is intentionally excluded from CLI deployment and must
-  be uploaded manually
+```bash
+curl -X POST http://ROV.local:8080/api/turret/home \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
 
-## Common API Endpoints
+### Drive examples
 
-- `GET /api/status`
-- `GET /api/logs`
-- `GET /api/drive/status`
-- `POST /api/drive/joy`
-- `POST /api/drive/move`
-- `POST /api/drive/stop`
-- `POST /api/drive/leds`
-- `GET /api/turret/status`
-- `GET /api/turret/telemetry`
-- `POST /api/turret/aim`
-- `POST /api/turret/tilt_zero`
-- `GET /api/power/status`
-- `POST /api/power/motor_enable`
-- `POST /api/power/shore_power`
-- `GET /api/servo/status`
-- `POST /api/servo/move`
-- `POST /api/servo/center`
-- `GET /api/chassis/camera/status`
-- `GET /api/chassis/camera/stream`
+Joystick command:
+
+```bash
+curl -X POST http://ROV.local:8080/api/drive/joy \
+  -H 'Content-Type: application/json' \
+  -d '{"throttle":100,"turn":0}'
+```
+
+Stop:
+
+```bash
+curl -X POST http://ROV.local:8080/api/drive/stop \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+Distance move:
+
+```bash
+curl -X POST http://ROV.local:8080/api/drive/move \
+  -H 'Content-Type: application/json' \
+  -d '{"dir":"fwd","dist_in":12,"speed":120}'
+```
+
+Set the drive LEDs to healthy green, or restore automatic drive lighting:
+
+```bash
+curl -X POST http://ROV.local:8080/api/drive/leds \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"green"}'
+
+curl -X POST http://ROV.local:8080/api/drive/leds \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"auto"}'
+```
+
+### Turret examples
+
+```bash
+curl http://ROV.local:8080/api/turret/status
+curl http://ROV.local:8080/api/turret/telemetry
+```
+
+Mark tilt zero:
+
+```bash
+curl -X POST http://ROV.local:8080/api/turret/tilt_zero \
+  -H 'Content-Type: application/json' \
+  -d '{"angle":90}'
+```
 
 ## Logs
 
@@ -318,8 +361,17 @@ By default the persistent files are written under `logs/`:
 Each file keeps the newest 200 lines and deletes the oldest first. Override
 the directory with `ROV_LOG_DIR=/path/to/logs` in `/etc/rov-backend.env`.
 
+## Repo Layout
+
+- `backend/` - Python HTTP API and hardware control code that runs on the Pi
+- `firmware/drive_nano/` - drive controller firmware
+- `firmware/turret_xiao/` - turret controller firmware
+- `firmware/turret_servos/` - dedicated servo controller firmware
+- `deploy.py` - compile/upload helper for the firmware targets and Pi service restart
+- `config/` - runtime config files such as saved turret IP state
+- `Templates/` - frontend template served by the backend
+
 ## Project Notes
 
 - `config/turret_ip.txt` is runtime state written by the system and should not be treated like a stable source file
 - the backend currently assumes the checkout path `/home/pi/ROV` in a few places, including the systemd unit and turret IP file lookup
-- [backend/README.md](/home/pi/ROV/backend/README.md) contains additional hardware-specific usage examples
