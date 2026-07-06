@@ -204,6 +204,14 @@ class RelayController:
             self.last_error = None
             return self._spec_to_dict(spec)
 
+    def is_motor_enabled(self) -> Optional[bool]:
+        """Return motor-enable state when the relay is available, else None."""
+        with self._lock:
+            spec = self._relays["motor_enable"]
+            if not spec.available:
+                return None
+            return bool(spec.state)
+
     def disable_motor(self) -> None:
         """Best-effort fail-safe used by the drive supervisor."""
         try:

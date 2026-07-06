@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROV Logs</title>
+  <style>
+    :root {
+      --bg: #07131a;
+      --panel: #10242f;
+      --line: #2e5b70;
+      --text: #e7f5fb;
+      --muted: #97b8c8;
+      --accent: #4ed0ff;
+      --danger: #ff7a7a;
+      --warn: #ffc857;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(78, 208, 255, 0.16), transparent 32%),
+        linear-gradient(160deg, #050d12 0%, #091b24 45%, #040a0f 100%);
+    }
+
+    .shell {
+      min-height: 100vh;
+      padding: 18px;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 14px;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border: 1px solid rgba(78, 208, 255, 0.2);
+      border-radius: 18px;
+      background: rgba(9, 27, 36, 0.85);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .link, .pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+    }
+
+    .link {
+      border: 1px solid rgba(78, 208, 255, 0.22);
+      color: var(--text);
+      text-decoration: none;
+      background: rgba(78, 208, 255, 0.08);
+    }
+
+    .pill {
+      background: rgba(78, 208, 255, 0.14);
+      color: var(--accent);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      min-height: 0;
+    }
+
+    .panel {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(151, 184, 200, 0.16);
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(22, 54, 70, 0.92), rgba(7, 19, 26, 0.96));
+      overflow: hidden;
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 14px 16px;
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(151, 184, 200, 0.12);
+    }
+
+    .meta {
+      margin: 0;
+      padding: 10px 16px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      border-bottom: 1px solid rgba(151, 184, 200, 0.12);
+    }
+
+    pre {
+      flex: 1;
+      margin: 0;
+      padding: 14px 16px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 0.82rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #d9f7ff;
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    .error { color: var(--danger); }
+    .warning { color: var(--warn); }
+    .info { color: var(--accent); }
+    .log-line { display: block; }
+    .log-http { color: #d9f7ff; }
+    .log-drive-nano { color: #66e3ff; }
+    .log-turret-xiao { color: #b38cff; }
+    .log-turret-servos { color: #7cff9b; }
+    .log-device-unknown { color: #d9f7ff; }
+    .log-error { color: var(--danger); }
+    .log-warning { color: var(--warn); }
+    .log-info { color: var(--accent); }
+    .log-debug { color: var(--muted); }
+    .log-label {
+      display: inline-block;
+      min-width: 118px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="header">
+      <h1>ROV Logs</h1>
+      <div class="header-actions">
+        <a class="link" href="/">Dashboard</a>
+        <div class="pill" id="status">Loading...</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Command / ACK Log</h2>
+        <p class="meta" id="commandMeta">Newest 200 lines</p>
+        <pre id="commandLog"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>System / Error Log</h2>
+        <p class="meta" id="systemMeta">Newest 200 lines</p>
+        <pre id="systemLog"></pre>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const statusNode = document.getElementById("status");
+    const commandLog = document.getElementById("commandLog");
+    const systemLog = document.getElementById("systemLog");
+    const commandMeta = document.getElementById("commandMeta");
+    const systemMeta = document.getElementById("systemMeta");
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function deviceClass(device) {
+      if (device === "drive_nano") return "log-drive-nano";
+      if (device === "turret_xiao") return "log-turret-xiao";
+      if (device === "turret_servos") return "log-turret-servos";
+      return "log-device-unknown";
+    }
+
+    function severityClass(level) {
+      const normalized = String(level || "info").toLowerCase();
+      if (normalized === "error") return "log-error";
+      if (normalized === "warning" || normalized === "warn") return "log-warning";
+      if (normalized === "debug") return "log-debug";
+      return "log-info";
+    }
+
+    function formatCommandRecord(record) {
+      const ts = escapeHtml(record.ts || "--");
+      if (record.event === "tx") {
+        const device = escapeHtml(record.device || "device");
+        const line = `${ts} <span class="log-label">${device} TX</span> ${escapeHtml(record.command || "")}`;
+        return `<span class="log-line ${deviceClass(record.device)}">${line}</span>`;
+      }
+      if (record.event === "rx") {
+        const device = escapeHtml(record.device || "device");
+        const line = `${ts} <span class="log-label">${device} RX</span> ${escapeHtml(record.response || "")}`;
+        return `<span class="log-line ${deviceClass(record.device)}">${line}</span>`;
+      }
+      if (record.event === "error") {
+        const device = escapeHtml(record.device || "device");
+        const line = `${ts} <span class="log-label">${device} ERROR</span> ${escapeHtml(record.command || "")} ${escapeHtml(record.error || "")}`;
+        return `<span class="log-line log-error">${line}</span>`;
+      }
+      if (record.event === "http_request") {
+        const line = `${ts} <span class="log-label">HTTP ${escapeHtml(record.method || "")}</span> ${escapeHtml(record.path || "")} body=${escapeHtml(JSON.stringify(record.body ?? {}))}`;
+        return `<span class="log-line log-http">${line}</span>`;
+      }
+      if (record.event === "http_response") {
+        const line = `${ts} <span class="log-label">HTTP ${escapeHtml(record.method || "")}</span> ${escapeHtml(record.path || "")} status=${escapeHtml(record.status)} response=${escapeHtml(JSON.stringify(record.response ?? {}))}`;
+        return `<span class="log-line log-http">${line}</span>`;
+      }
+      return `<span class="log-line log-http">${ts} ${escapeHtml(record.raw || JSON.stringify(record))}</span>`;
+    }
+
+    function formatSystemRecord(record) {
+      const ts = escapeHtml(record.ts || "--");
+      const level = String(record.level || "info").toUpperCase();
+      const message = record.message || record.raw || JSON.stringify(record);
+      const extra = { ...record };
+      delete extra.ts;
+      delete extra.level;
+      delete extra.message;
+      const suffix = Object.keys(extra).length ? ` ${JSON.stringify(extra)}` : "";
+      const line = `${ts} <span class="log-label">${escapeHtml(level)}</span> ${escapeHtml(message)}${escapeHtml(suffix)}`;
+      return `<span class="log-line ${severityClass(record.level)}">${line}</span>`;
+    }
+
+    async function refreshLogs() {
+      try {
+        const response = await fetch("/api/logs", { cache: "no-store" });
+        if (response.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
+        const payload = await response.json();
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || "log refresh failed");
+        }
+
+        const commands = payload.commands || [];
+        const system = payload.system || [];
+        commandLog.innerHTML = commands.map(formatCommandRecord).join("\n");
+        systemLog.innerHTML = system.map(formatSystemRecord).join("\n");
+        commandMeta.textContent = `${commands.length}/${payload.max_lines || 200} lines · ${payload.files?.commands || ""}`;
+        systemMeta.textContent = `${system.length}/${payload.max_lines || 200} lines · ${payload.files?.system || ""}`;
+        statusNode.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        statusNode.textContent = error.message;
+      }
+    }
+
+    refreshLogs();
+    window.setInterval(refreshLogs, 2000);
+  </script>
+</body>
+</html>

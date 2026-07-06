@@ -63,6 +63,22 @@
       text-transform: uppercase;
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-link {
+      padding: 8px 12px;
+      border: 1px solid rgba(78, 208, 255, 0.22);
+      border-radius: 999px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.9rem;
+      background: rgba(78, 208, 255, 0.08);
+    }
+
     .status-pill {
       padding: 8px 12px;
       border-radius: 999px;
@@ -656,7 +672,10 @@
   <div class="shell">
     <div class="header">
       <h1>ROV Operations Dashboard</h1>
-      <div class="status-pill" id="connectionState">Connecting...</div>
+      <div class="header-actions">
+        <a class="header-link" href="/logs">Logs</a>
+        <div class="status-pill" id="connectionState">Connecting...</div>
+      </div>
     </div>
 
     <div class="grid">
@@ -2272,14 +2291,6 @@
     window.setInterval(pumpDriveJoystick, DRIVE_COMMAND_MS);
     window.setInterval(pumpTurretJoystick, TURRET_COMMAND_MS);
     window.setInterval(renewControlLease, 1000);
-    window.addEventListener("pagehide", disconnectControlClient);
-    document.addEventListener("visibilitychange", () => {
-      if (document.hidden) {
-        disconnectControlClient();
-      } else {
-        renewControlLease();
-      }
-    });
     renewControlLease();
     refreshStatus();
     refreshLidar();

@@ -152,9 +152,11 @@ class DriveSafetySupervisor:
         disable_motor: Callable[[], None],
         heartbeat_interval_s: float = 1.0,
         client_timeout_s: float = 3.0,
+        system_logger: Optional[Callable[..., None]] = None,
     ):
         self.drive = drive
         self.disable_motor = disable_motor
+        self.system_logger = system_logger
         self.heartbeat_interval_s = max(0.1, float(heartbeat_interval_s))
         self.client_timeout_s = max(self.heartbeat_interval_s, float(client_timeout_s))
         self._lock = threading.Lock()
@@ -195,6 +197,11 @@ class DriveSafetySupervisor:
 
     def safe_shutdown(self, reason: str) -> None:
         self.last_safety_reason = reason
+        if self.system_logger:
+            try:
+                self.system_logger("warning", "drive safety shutdown", reason=reason)
+            except Exception:
+                pass
         try:
             self.drive.stop()
         except Exception:

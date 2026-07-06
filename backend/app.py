@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -13,6 +14,7 @@ from config import (
     AUTH_PASSWORD, AUTH_SESSION_HOURS, AUTH_USERNAME,
     CLIENT_LEASE_TIMEOUT_S, DRIVE_HEARTBEAT_INTERVAL_S,
     HTTP_MAX_BODY_BYTES,
+    LOG_DIR, LOG_MAX_LINES,
     PAN_SERVO_ID, TILT_SERVO_ID,
     SERVO_MIN_POS, SERVO_MAX_POS,
     SERVO_CENTER_POS, TURRET_SERVO_PORT, SERVO_BAUD,
@@ -28,17 +30,31 @@ from ultrasonic import PiUltrasonicService
 from chassis_camera import ChassisCameraService
 from validation import require_bool
 from auth import SessionAuth
+from rov_logs import RovLogs
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BASE_DIR.parent
 TEMPLATES_DIR = PROJECT_DIR / "Templates"
 INDEX_TEMPLATE = TEMPLATES_DIR / "index.html"
 LOGIN_TEMPLATE = TEMPLATES_DIR / "login.html"
+LOGS_TEMPLATE = TEMPLATES_DIR / "logs.html"
 TURRET_IP_FILE = PROJECT_DIR / "config" / "turret_ip.txt"
 
-drive = DriveController(SerialLine(DRIVE_PORT, DRIVE_BAUD, name="drive"))
-turret = TurretController(SerialLine(TURRET_PORT, TURRET_BAUD, name="turret"))
-servos = ServoController()
+logs = RovLogs(LOG_DIR, LOG_MAX_LINES)
+
+drive = DriveController(SerialLine(
+    DRIVE_PORT,
+    DRIVE_BAUD,
+    name="drive_nano",
+    traffic_logger=logs.command_event,
+))
+turret = TurretController(SerialLine(
+    TURRET_PORT,
+    TURRET_BAUD,
+    name="turret_xiao",
+    traffic_logger=logs.command_event,
+))
+servos = ServoController(traffic_logger=logs.command_event)
 relays = RelayController()
 
 
@@ -55,6 +71,7 @@ drive_safety = DriveSafetySupervisor(
     disable_motion_outputs,
     heartbeat_interval_s=DRIVE_HEARTBEAT_INTERVAL_S,
     client_timeout_s=CLIENT_LEASE_TIMEOUT_S,
+    system_logger=logs.system_event,
 )
 turret_state = TurretState()
 lidar = LidarService()
@@ -65,6 +82,29 @@ session_auth = SessionAuth(
     AUTH_PASSWORD,
     session_hours=AUTH_SESSION_HOURS,
 )
+
+
+def require_motor_enabled_for_drive():
+    motor_enabled = relays.is_motor_enabled()
+    if motor_enabled is False:
+        return err(
+            "motor enable relay is off",
+            409,
+            {"relay_status": relays.snapshot()},
+        )
+    return None
+
+
+def sanitize_body(body):
+    if not isinstance(body, dict):
+        return body
+    sanitized = {}
+    for key, value in body.items():
+        if key.lower() in ("password", "token", "secret"):
+            sanitized[key] = "<redacted>"
+        else:
+            sanitized[key] = value
+    return sanitized
 
 
 def ok(data=None, status=200):
@@ -135,12 +175,14 @@ def system_status():
     # Gather latest device state with safe fallbacks
     try:
         drive_status = drive.status()
-    except Exception:
+    except Exception as exc:
+        logs.system_event("warning", "drive status failed", error=str(exc))
         drive_status = drive.last_status
 
     try:
         turret_status = turret.status()
-    except Exception:
+    except Exception as exc:
+        logs.system_event("warning", "turret status failed", error=str(exc))
         turret_status = turret.last_status
 
     live_turret_ip = turret_status.get("ip") if isinstance(turret_status, dict) else None
@@ -149,7 +191,8 @@ def system_status():
 
     try:
         turret_telemetry = turret.telemetry()
-    except Exception:
+    except Exception as exc:
+        logs.system_event("warning", "turret telemetry failed", error=str(exc))
         turret_telemetry = turret.last_telemetry
 
     try:
@@ -164,7 +207,8 @@ def system_status():
             )
         if "position" in tilt_status:
             turret_state.update_tilt_position(tilt_status["position"])
-    except Exception:
+    except Exception as exc:
+        logs.system_event("warning", "servo status failed", error=str(exc))
         servo_status = {
             **servos.last_status,
             "stale": True,
@@ -205,6 +249,7 @@ def system_status():
         },
         "endpoints": [
             "GET /api/status",
+            "GET /api/logs",
             "GET /api/drive/status",
             "POST /api/drive/joy",
             "POST /api/drive/move",
@@ -376,6 +421,12 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send_json(400, {"ok": False, "error": str(exc)})
         except Exception:
+            logs.system_event(
+                "error",
+                "unhandled GET exception",
+                path=getattr(self, "path", ""),
+                traceback=traceback.format_exc(limit=8),
+            )
             self._send_json(500, {"ok": False, "error": "internal server error"})
 
     def _send_chassis_camera_stream(self):
@@ -451,16 +502,36 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/login":
             try:
                 body = read_json(self)
+                logs.command_event(
+                    "http_request",
+                    method="POST",
+                    path=path,
+                    body=sanitize_body(body),
+                )
                 session_id = session_auth.login(
                     body.get("username", ""),
                     body.get("password", ""),
                 )
                 if not session_id:
+                    logs.command_event(
+                        "http_response",
+                        method="POST",
+                        path=path,
+                        status=401,
+                        response={"ok": False, "error": "invalid username or password"},
+                    )
                     self._send_json(401, {
                         "ok": False,
                         "error": "invalid username or password",
                     })
                     return
+                logs.command_event(
+                    "http_response",
+                    method="POST",
+                    path=path,
+                    status=200,
+                    response={"ok": True},
+                )
                 self._send_json(
                     200,
                     {"ok": True},
@@ -473,6 +544,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/logout":
             session_auth.logout(self.headers.get("Cookie", ""))
             drive_safety.disconnect_client()
+            logs.command_event(
+                "http_response",
+                method="POST",
+                path=path,
+                status=200,
+                response={"ok": True},
+            )
             self._send_json(
                 200,
                 {"ok": True},
@@ -485,13 +563,44 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = read_json(self)
+            if path != "/api/client/heartbeat":
+                logs.command_event(
+                    "http_request",
+                    method="POST",
+                    path=path,
+                    body=sanitize_body(body),
+                )
             status, payload = self.route_post(path, body)
+            if status >= 400:
+                logs.system_event(
+                    "warning" if status < 500 else "error",
+                    "request failed",
+                    path=path,
+                    status=status,
+                    response=payload,
+                )
+            if path != "/api/client/heartbeat":
+                logs.command_event(
+                    "http_response",
+                    method="POST",
+                    path=path,
+                    status=status,
+                    response=payload,
+                )
             self._send_json(status, payload)
         except RequestTooLarge as exc:
+            logs.system_event("error", "request too large", path=path, error=str(exc))
             self._send_json(413, {"ok": False, "error": str(exc)})
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logs.system_event("warning", "bad request", path=path, error=str(exc))
             self._send_json(400, {"ok": False, "error": str(exc)})
         except DriveDeviceError as exc:
+            logs.system_event(
+                "warning",
+                "drive device rejected command",
+                path=path,
+                device_response=exc.response,
+            )
             self._send_json(409, {
                 "ok": False,
                 "error": str(exc),
@@ -500,6 +609,12 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             drive_safety.safe_shutdown("control client connection lost")
         except Exception:
+            logs.system_event(
+                "error",
+                "unhandled POST exception",
+                path=path,
+                traceback=traceback.format_exc(limit=8),
+            )
             self._send_json(500, {"ok": False, "error": "internal server error"})
 
     def route_get(self, path):
@@ -508,8 +623,17 @@ class Handler(BaseHTTPRequestHandler):
                 return 200, INDEX_TEMPLATE.read_text(encoding="utf-8"), "html"
             return 404, "<h1>Templates/index.html not found</h1>", "html"
 
+        if path == "/logs":
+            if LOGS_TEMPLATE.exists():
+                return 200, LOGS_TEMPLATE.read_text(encoding="utf-8"), "html"
+            return 404, "<h1>Templates/logs.html not found</h1>", "html"
+
         if path in ("/api", "/api/status"):
             status, payload = ok(system_status())
+            return status, payload, "json"
+
+        if path == "/api/logs":
+            status, payload = ok(logs.snapshot(LOG_MAX_LINES))
             return status, payload, "json"
 
         if path == "/api/dashboard":
@@ -577,6 +701,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/drive/joy":
             drive_safety.renew_client_lease()
+            motor_disabled = require_motor_enabled_for_drive()
+            if motor_disabled:
+                return motor_disabled
             return ok({
                 "response": drive.joy(
                     body.get("throttle", 0),
@@ -586,6 +713,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/drive/move":
             drive_safety.renew_client_lease()
+            motor_disabled = require_motor_enabled_for_drive()
+            if motor_disabled:
+                return motor_disabled
             return ok(drive.move(
                 body.get("dir", "fwd"),
                 body.get("dist_in", 0),
@@ -712,9 +842,17 @@ def main():
     print(f"  chassis camera: {chassis_camera.status()['stream_url']}")
     if not session_auth.configured:
         print("WARNING: authentication is disabled; set ROV_USERNAME and ROV_PASSWORD")
+    logs.system_event(
+        "info",
+        "backend started",
+        host=args.host,
+        port=args.port,
+        log_dir=LOG_DIR,
+    )
     try:
         httpd.serve_forever()
     finally:
+        logs.system_event("info", "backend shutting down")
         drive_safety.safe_shutdown("backend shutting down")
         drive_safety.stop()
         lidar.stop()

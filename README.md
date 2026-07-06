@@ -58,6 +58,125 @@ Before running on different hardware, review at least:
 - ultrasonic chip and line values
 - relay chip and line values
 
+## Hardware Pinouts
+
+These tables reflect the current firmware and backend config.
+
+### Drive Nano ESP32
+
+Source: [firmware/drive_nano/drive_nano.ino](/home/pi/ROV/firmware/drive_nano/drive_nano.ino)
+
+| Function | Nano ESP32 pin | Direction / notes |
+|---|---:|---|
+| Left encoder A | D2 | `INPUT_PULLUP` |
+| Left encoder B | D3 | `INPUT_PULLUP` |
+| Right encoder A | D4 | `INPUT_PULLUP` |
+| Right encoder B | D5 | `INPUT_PULLUP` |
+| Left motor forward input | D6 | Output |
+| Left motor reverse input | D7 | Output |
+| Right motor forward input | D8 | Output |
+| Right motor reverse input | D9 | Output |
+| Left motor PWM | D11 | PWM output |
+| Right motor PWM | D12 | PWM output |
+| Battery voltage sense | A0 | Analog input, divider ratio `5.0` |
+
+| Motor side | Driver inputs | PWM |
+|---|---|---|
+| Left | D6 / D7 | D11 |
+| Right | D8 / D9 | D12 |
+
+### Turret Servo Controller / Pro Micro-Leonardo
+
+Source: [firmware/turret_servos/turret_servos.ino](/home/pi/ROV/firmware/turret_servos/turret_servos.ino)
+
+| Function | Board pin | Direction / notes |
+|---|---:|---|
+| Tilt servo signal | D3 | Servo output |
+| Front NeoPixel strip data | D4 | Two pixels |
+| Rear NeoPixel strip data | D5 | Two pixels |
+| Pan motor driver IN2 | D6 | PWM-capable output |
+| Pan motor driver IN1 | D9 | Digital output |
+| Pan home switch | D10 | `INPUT_PULLUP`; pressed reads LOW |
+| Battery voltage sense | A0 | Analog input, divider ratio `5.0` |
+
+Pan home-switch wiring:
+
+| Switch terminal | Connection |
+|---|---|
+| NC | 5 V |
+| NO | GND |
+| Common | D10 |
+
+Pan motor notes:
+
+- Current clockwise direction is negative speed.
+- Pan output is scaled to `75%` in firmware.
+- D9 is held digital because the Servo library uses Timer1; PWM is applied on D6.
+
+### Turret XIAO ESP32S3 Sense
+
+Source: [firmware/turret_xiao/turret_xiao.ino](/home/pi/ROV/firmware/turret_xiao/turret_xiao.ino)
+
+| Function | XIAO / ESP32S3 pin | Notes |
+|---|---:|---|
+| I2C SDA | `SDA` | ToF range sensor bus |
+| I2C SCL | `SCL` | ToF range sensor bus |
+| VL53L1X ToF address | `0x29` | I2C device address |
+
+Camera pin mapping:
+
+| Camera signal | ESP32S3 GPIO |
+|---|---:|
+| XCLK | GPIO10 |
+| SIOD / SDA | GPIO40 |
+| SIOC / SCL | GPIO39 |
+| Y9 | GPIO48 |
+| Y8 | GPIO11 |
+| Y7 | GPIO12 |
+| Y6 | GPIO14 |
+| Y5 | GPIO16 |
+| Y4 | GPIO18 |
+| Y3 | GPIO17 |
+| Y2 | GPIO15 |
+| VSYNC | GPIO38 |
+| HREF | GPIO47 |
+| PCLK | GPIO13 |
+| PWDN | Not used / `-1` |
+| RESET | Not used / `-1` |
+
+### Rock 3C / Pi-side GPIO
+
+Source: [backend/config.py](/home/pi/ROV/backend/config.py)
+
+Relay outputs:
+
+| Function | Header pin | BCM | libgpiod chip / line | Active logic |
+|---|---:|---:|---|---|
+| Motor enable relay K1 | PIN 11 | BCM17 | `gpiochip3` line `1` | Active-low |
+| Power-source transfer pair K2 | PIN 13 | BCM27 | `gpiochip3` line `2` | Active-high |
+
+Power-source transfer logic:
+
+| GPIO state | Battery path | Shore-power path |
+|---|---|---|
+| LOW | Battery enabled | Shore isolated |
+| HIGH | Battery isolated | Shore enabled |
+
+Pi ultrasonic sensors:
+
+| Sensor | Signal | Header pin | BCM | libgpiod chip / line |
+|---|---|---:|---:|---|
+| Front | Trigger | PIN 16 | BCM23 | `gpiochip3` line `9` |
+| Front | Echo | PIN 18 | BCM24 | `gpiochip3` line `10` |
+| Rear | Trigger | PIN 22 | BCM25 | `gpiochip3` line `17` |
+| Rear | Echo | PIN 24 | BCM8 | `gpiochip4` line `22` |
+
+Deploy/reset helper:
+
+| Function | libgpiod chip / line | Notes |
+|---|---|---|
+| Turret upload reset relay | `gpiochip3` line `5` | Toggled by [firmware/deploy.py](/home/pi/ROV/firmware/deploy.py) before turret upload |
+
 ## Running The Backend
 
 From the repo root:
@@ -164,6 +283,7 @@ Notes:
 ## Common API Endpoints
 
 - `GET /api/status`
+- `GET /api/logs`
 - `GET /api/drive/status`
 - `POST /api/drive/joy`
 - `POST /api/drive/move`
@@ -181,6 +301,22 @@ Notes:
 - `POST /api/servo/center`
 - `GET /api/chassis/camera/status`
 - `GET /api/chassis/camera/stream`
+
+## Logs
+
+The dashboard has a `Logs` link at the top right. It opens `/logs`, which
+shows:
+
+- command/ACK traffic from API commands and serial devices
+- backend/system warnings and errors
+
+By default the persistent files are written under `logs/`:
+
+- `logs/commands.log`
+- `logs/system.log`
+
+Each file keeps the newest 200 lines and deletes the oldest first. Override
+the directory with `ROV_LOG_DIR=/path/to/logs` in `/etc/rov-backend.env`.
 
 ## Project Notes
 

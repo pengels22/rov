@@ -63,6 +63,7 @@ const int PAN_HOME_PIN = 10;
 const int PAN_HOME_FAST_SPEED = -30;
 const int PAN_HOME_BACKOFF_SPEED = 30;
 const int PAN_HOME_SLOW_SPEED = -2;
+const int PAN_OUTPUT_SCALE_PERCENT = 75;
 const unsigned long PAN_HOME_TIMEOUT_MS = 30000;
 const unsigned long PAN_HOME_BACKOFF_TIMEOUT_MS = 3000;
 const unsigned long PAN_HOME_BACKOFF_CLEARANCE_MS = 120;
@@ -309,7 +310,13 @@ void setPanSpeed(int speedValue) {
     return;
   }
 
-  int pwmValue = map(abs(panSpeed), 0, 100, 0, 255);
+  int pwmValue = map(
+    abs(panSpeed),
+    0,
+    100,
+    0,
+    (255 * PAN_OUTPUT_SCALE_PERCENT) / 100
+  );
 
   if (panSpeed > 0) {
     // D9 cannot provide reliable PWM while the Servo library owns Timer1.

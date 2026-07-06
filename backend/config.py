@@ -1,5 +1,8 @@
 # ROV backend config
 import os
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 DRIVE_PORT = "/dev/rov/drive"
 TURRET_PORT = "/dev/rov/turret"
@@ -13,6 +16,10 @@ SERVO_BAUD = 115200
 HTTP_HOST = "0.0.0.0"
 HTTP_PORT = 8080
 HTTP_MAX_BODY_BYTES = 16 * 1024
+
+# Persistent backend logs. Each file keeps the newest LOG_MAX_LINES lines.
+LOG_DIR = os.environ.get("ROV_LOG_DIR", str(PROJECT_DIR / "logs"))
+LOG_MAX_LINES = 200
 
 # Dashboard login credentials. Set both in /etc/rov-backend.env.
 AUTH_USERNAME = os.environ.get("ROV_USERNAME", "").strip()

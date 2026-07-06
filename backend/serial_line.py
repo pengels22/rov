@@ -15,7 +15,16 @@ class SerialLine:
     Also usable for binary servo adapter writes using write_bytes().
     """
 
-    def __init__(self, port: str, baud: int, timeout: float = 0.3, name: str = "serial", write_timeout: Optional[float] = None, use_rts_for_tx: bool = False):
+    def __init__(
+        self,
+        port: str,
+        baud: int,
+        timeout: float = 0.3,
+        name: str = "serial",
+        write_timeout: Optional[float] = None,
+        use_rts_for_tx: bool = False,
+        traffic_logger: Optional[Callable[..., None]] = None,
+    ):
         self.port = port
         self.baud = baud
         self.timeout = timeout
@@ -24,10 +33,24 @@ class SerialLine:
         self.name = name
         # Some half-duplex adapters require toggling RTS / DE for TX direction.
         self.use_rts_for_tx = bool(use_rts_for_tx)
+        self.traffic_logger = traffic_logger
         self._lock = threading.RLock()
         self._ser: Optional[serial.Serial] = None
         self.last_error: Optional[str] = None
         self.last_open_ok = False
+
+    def _log(self, event: str, **fields) -> None:
+        if not self.traffic_logger:
+            return
+        try:
+            self.traffic_logger(
+                event,
+                device=self.name,
+                port=self.port,
+                **fields,
+            )
+        except Exception:
+            pass
 
     def open(self) -> serial.Serial:
         with self._lock:
@@ -65,13 +88,16 @@ class SerialLine:
                 if response_timeout is not None:
                     ser.timeout = response_timeout
                 ser.reset_input_buffer()
+                self._log("tx", command=cmd.rstrip("\n"))
                 ser.write((cmd.rstrip("\n") + "\n").encode("utf-8"))
                 ser.flush()
                 resp = ser.readline().decode("utf-8", errors="replace").strip()
+                self._log("rx", command=cmd.rstrip("\n"), response=resp)
                 self.last_error = None
                 return resp
             except Exception as e:
                 self.last_error = str(e)
+                self._log("error", command=cmd.rstrip("\n"), error=str(e))
                 self.close()
                 raise
             finally:
@@ -99,6 +125,7 @@ class SerialLine:
             try:
                 ser.timeout = timeout
                 ser.reset_input_buffer()
+                self._log("tx", command=cmd.rstrip("\n"))
                 ser.write((cmd.rstrip("\n") + "\n").encode("utf-8"))
                 ser.flush()
 
@@ -112,13 +139,16 @@ class SerialLine:
                         continue
                     last_nonempty = resp
                     if matcher(resp):
+                        self._log("rx", command=cmd.rstrip("\n"), response=resp)
                         self.last_error = None
                         return resp
 
                 self.last_error = None
+                self._log("rx", command=cmd.rstrip("\n"), response=last_nonempty)
                 return last_nonempty
             except Exception as e:
                 self.last_error = str(e)
+                self._log("error", command=cmd.rstrip("\n"), error=str(e))
                 self.close()
                 raise
             finally:
