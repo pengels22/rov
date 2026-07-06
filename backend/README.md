@@ -41,31 +41,31 @@ curl http://ROV.local:8080/api/servo/status
 
 ## Safe servo test
 
-The backend now talks to the dedicated turret servo controller over serial.
-That firmware accepts direct servo angles in the `0..180` range.
+The dedicated controller uses signed pan motor speed (`-100..100`) and an
+absolute tilt-servo angle (`0..180`). Always stop pan explicitly.
 
-First physical servo test:
+First physical tilt test:
 
 ```bash
 curl -X POST http://ROV.local:8080/api/servo/move \
   -H 'Content-Type: application/json' \
-  -d '{"id":1,"angle":90,"time_ms":1000}'
+  -d '{"id":2,"angle":90}'
 ```
 
-Then tiny move:
+Brief low-speed pan test:
 
 ```bash
 curl -X POST http://ROV.local:8080/api/servo/move \
   -H 'Content-Type: application/json' \
-  -d '{"id":1,"angle":100,"time_ms":1000}'
+  -d '{"id":1,"position":10}'
 ```
 
-Return center-ish:
+Stop pan:
 
 ```bash
-curl -X POST http://ROV.local:8080/api/servo/move \
+curl -X POST http://ROV.local:8080/api/turret/stop \
   -H 'Content-Type: application/json' \
-  -d '{"id":1,"angle":90,"time_ms":1000}'
+  -d '{}'
 ```
 
 ## Drive examples

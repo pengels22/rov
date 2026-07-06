@@ -35,6 +35,7 @@ Implemented in `backend/app.py`.
 - `/api/turret/camera/brightness`
 - `/api/turret/tilt_zero`
 - `/api/turret/aim`
+- `/api/turret/stop`
 - `/api/turret/home`
 - `/api/turret/mark_pan_home`
 - `/api/power/motor_enable`

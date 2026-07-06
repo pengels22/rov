@@ -1,4 +1,5 @@
 # ROV backend config
+import os
 
 DRIVE_PORT = "/dev/rov/drive"
 TURRET_PORT = "/dev/rov/turret"
@@ -11,6 +12,16 @@ SERVO_BAUD = 115200
 
 HTTP_HOST = "0.0.0.0"
 HTTP_PORT = 8080
+HTTP_MAX_BODY_BYTES = 16 * 1024
+
+# Dashboard login credentials. Set both in /etc/rov-backend.env.
+AUTH_USERNAME = os.environ.get("ROV_USERNAME", "").strip()
+AUTH_PASSWORD = os.environ.get("ROV_PASSWORD", "")
+AUTH_SESSION_HOURS = 12
+
+# Safety supervision. The backend sends HB independently of HTTP traffic.
+DRIVE_HEARTBEAT_INTERVAL_S = 1.0
+CLIENT_LEASE_TIMEOUT_S = 3.0
 
 # Rock 3C CSI chassis camera. The backend tries these commands in order and
 # proxies the MJPEG frames to the dashboard.
@@ -83,14 +94,18 @@ ULTRASONIC_REAR_TRIGGER_LINE = 17
 ULTRASONIC_REAR_ECHO_CHIP = "gpiochip4"      # Pi BCM8 -> header PIN_24
 ULTRASONIC_REAR_ECHO_LINE = 22
 
-# Dedicated hobby-servo controller firmware on a serial-connected Pro Micro.
-# The firmware accepts absolute angles in degrees:
-#   P90
+# Dedicated turret controller firmware on a serial-connected Pro Micro.
+# Pan is open-loop motor speed; tilt is an absolute servo angle:
+#   P-30
 #   T45
-#   PT90,45
+#   PT-30,45
 #   ?
-SERVO_MIN_POS = 0
-SERVO_MAX_POS = 270
+PAN_MIN_SPEED = -100
+PAN_MAX_SPEED = 100
+TILT_MIN_ANGLE = 0
+TILT_MAX_ANGLE = 180
+SERVO_MIN_POS = TILT_MIN_ANGLE
+SERVO_MAX_POS = TILT_MAX_ANGLE
 SERVO_CENTER_POS = 90
 
 PAN_SERVO_ID = 1

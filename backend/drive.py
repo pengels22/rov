@@ -1,8 +1,15 @@
 import json
+import threading
 import time
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 
 from serial_line import SerialLine
+
+
+class DriveDeviceError(RuntimeError):
+    def __init__(self, response: str):
+        super().__init__(f"drive controller rejected command: {response}")
+        self.response = response
 
 
 class DriveController:
@@ -36,8 +43,21 @@ class DriveController:
 
     def _cmd(self, cmd: str, timeout: float = 0.5) -> str:
         try:
-            resp = self.line.command(cmd, response_timeout=timeout)
+            resp = self.line.command_matching(
+                cmd,
+                lambda line: (
+                    line == "ACK"
+                    or line.startswith("ACK,")
+                    or line.startswith("ERR")
+                ),
+                response_timeout=timeout,
+                max_lines=12,
+            )
             self.last_response = resp
+            if not resp:
+                raise TimeoutError(f"drive controller did not respond to {cmd}")
+            if resp.upper().startswith("ERR"):
+                raise DriveDeviceError(resp)
             self.last_error = None
             return resp
         except Exception as e:
@@ -45,9 +65,23 @@ class DriveController:
             raise
 
     def status(self) -> Dict[str, Any]:
-        resp = self._cmd("STATUS")
+        try:
+            resp = self.line.command_matching(
+                "STATUS",
+                lambda line: line.startswith("{") or line.startswith("ERR"),
+                response_timeout=0.5,
+                max_lines=12,
+            )
+            if not resp:
+                raise TimeoutError("drive controller did not respond to STATUS")
+            if resp.upper().startswith("ERR"):
+                raise DriveDeviceError(resp)
+        except Exception as exc:
+            self.last_error = str(exc)
+            raise
         try:
             self.last_status = json.loads(resp)
+            self.last_error = None
         except Exception:
             self.last_status = {"raw": resp, "parse_error": True}
         return self.last_status
@@ -107,3 +141,105 @@ class DriveController:
         if normalized not in ("auto", "green"):
             raise ValueError("mode must be auto or green")
         return self._cmd(f"LEDS,{normalized.upper()}")
+
+
+class DriveSafetySupervisor:
+    """Independent drive heartbeat and dashboard control lease."""
+
+    def __init__(
+        self,
+        drive: DriveController,
+        disable_motor: Callable[[], None],
+        heartbeat_interval_s: float = 1.0,
+        client_timeout_s: float = 3.0,
+    ):
+        self.drive = drive
+        self.disable_motor = disable_motor
+        self.heartbeat_interval_s = max(0.1, float(heartbeat_interval_s))
+        self.client_timeout_s = max(self.heartbeat_interval_s, float(client_timeout_s))
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._client_deadline: Optional[float] = None
+        self._lease_expired = False
+        self.last_heartbeat_at: Optional[float] = None
+        self.last_heartbeat_error: Optional[str] = None
+        self.last_safety_reason: Optional[str] = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="drive-safety-supervisor",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread and self._thread is not threading.current_thread():
+            self._thread.join(timeout=self.heartbeat_interval_s + 1.0)
+
+    def renew_client_lease(self) -> None:
+        with self._lock:
+            self._client_deadline = time.monotonic() + self.client_timeout_s
+            self._lease_expired = False
+
+    def disconnect_client(self) -> None:
+        with self._lock:
+            self._client_deadline = None
+            self._lease_expired = True
+        self.safe_shutdown("client disconnected")
+
+    def safe_shutdown(self, reason: str) -> None:
+        self.last_safety_reason = reason
+        try:
+            self.drive.stop()
+        except Exception:
+            pass
+        try:
+            self.disable_motor()
+        except Exception:
+            pass
+
+    def snapshot(self) -> Dict[str, Any]:
+        with self._lock:
+            deadline = self._client_deadline
+        return {
+            "running": bool(self._thread and self._thread.is_alive()),
+            "heartbeat_interval_s": self.heartbeat_interval_s,
+            "last_heartbeat_at": self.last_heartbeat_at,
+            "last_heartbeat_error": self.last_heartbeat_error,
+            "client_lease_active": deadline is not None and time.monotonic() < deadline,
+            "client_lease_timeout_s": self.client_timeout_s,
+            "last_safety_reason": self.last_safety_reason,
+        }
+
+    def _run(self) -> None:
+        while not self._stop_event.is_set():
+            cycle_started = time.monotonic()
+            try:
+                self.drive.heartbeat()
+                self.last_heartbeat_at = time.time()
+                self.last_heartbeat_error = None
+            except Exception as exc:
+                self.last_heartbeat_error = str(exc)
+                self.safe_shutdown("drive heartbeat failed")
+
+            should_expire = False
+            with self._lock:
+                if (
+                    self._client_deadline is not None
+                    and time.monotonic() >= self._client_deadline
+                    and not self._lease_expired
+                ):
+                    self._client_deadline = None
+                    self._lease_expired = True
+                    should_expire = True
+            if should_expire:
+                self.safe_shutdown("client lease expired")
+
+            elapsed = time.monotonic() - cycle_started
+            self._stop_event.wait(max(0.0, self.heartbeat_interval_s - elapsed))

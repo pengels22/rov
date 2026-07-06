@@ -194,3 +194,10 @@ class RelayController:
             spec.last_error = None
             self.last_error = None
             return self._spec_to_dict(spec)
+
+    def disable_motor(self) -> None:
+        """Best-effort fail-safe used by the drive supervisor."""
+        try:
+            self.set_state("motor_enable", False)
+        except Exception:
+            pass

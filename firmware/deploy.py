@@ -21,16 +21,12 @@ ARDUINO_CLI = Path(os.environ.get("ARDUINO_CLI", str(Path.home() / ".local/bin/a
 DRIVE_NANO_PORTS = [
     "/dev/rov/drive",
 ]
-TURRET_NANO_PORTS = [
-    "/dev/rov/turretn",
-]
 TURRET_XIAO_PORTS = [
     "/dev/rov/turret",
 ]
 RESET_RELAY_CMD = "gpioset gpiochip3 5=1; sleep 0.2; gpioset gpiochip3 5=0"
 
 FLAG_TARGETS = {
-    "turret_nano": "turretn",
     "turret_xiao": "turret",
     "drive_nano": "drive",
     "backend": "pi",
@@ -40,14 +36,8 @@ SERIAL_MONITOR_FLAGS = [
     {
         "options": ("-ts",),
         "dest": "turret_serial",
-        "target": "turretn",
-        "help": "Print serial output from the turret XIAO controller.",
-    },
-    {
-        "options": ("-tsn",),
-        "dest": "turret_nano_serial",
         "target": "turret",
-        "help": "Print serial output from the turret servo Nano controller.",
+        "help": "Print serial output from the turret XIAO controller.",
     },
     {
         "options": ("-ds",),
@@ -58,11 +48,6 @@ SERIAL_MONITOR_FLAGS = [
 ]
 
 TARGET_FLAGS = [
-    {
-        "options": ("-tn", "--turret-nano"),
-        "dest": "turret_nano",
-        "help": "Build and deploy the turret nano/servo controller.",
-    },
     {
         "options": ("-t", "--turret-xiao"),
         "dest": "turret_xiao",
@@ -81,7 +66,6 @@ TARGET_FLAGS = [
 ]
 
 ALL_TARGETS = [
-    FLAG_TARGETS["turret_nano"],
     FLAG_TARGETS["turret_xiao"],
     FLAG_TARGETS["drive_nano"],
     FLAG_TARGETS["backend"],
@@ -102,21 +86,6 @@ BOARD_CONFIG = {
         ],
     },
     "turret": {
-        "boards": [
-            {
-                "name": "turret-servos",
-                "sketch": PROJECT_ROOT / "firmware/turret_servos",
-                "fqbn": "arduino:avr:leonardo",
-                "ports": TURRET_NANO_PORTS,
-                "touch_1200bps": True,
-                "usb_reenumerate": True,
-                "stop_services": [
-                    "rov-backend.service",
-                ],
-            },
-        ],
-    },
-    "turretn": {
         "boards": [
             {
                 "name": "turret-xiao",
@@ -149,10 +118,9 @@ def parse_args() -> argparse.Namespace:
             "Compile and optionally upload Arduino firmware for a configured target. "
             "Examples: `python3 firmware/deploy.py -d`, "
             "`python3 firmware/deploy.py -t`, "
-            "`python3 firmware/deploy.py -tn`, "
             "`python3 firmware/deploy.py -ts`, "
-            "`python3 firmware/deploy.py -tsn`, "
             "`python3 firmware/deploy.py -ds`, "
+            "`python3 firmware/deploy.py -bl`, "
             "`python3 firmware/deploy.py -b`, "
             "`python3 firmware/deploy.py -a`."
         )
@@ -182,6 +150,12 @@ def parse_args() -> argparse.Namespace:
             help=flag["help"],
         )
     parser.add_argument(
+        "-bl",
+        "--backend-logs",
+        action="store_true",
+        help="Follow the backend systemd service logs.",
+    )
+    parser.add_argument(
         "-a",
         "--all",
         action="store_true",
@@ -207,6 +181,18 @@ def collect_flag_targets(args: argparse.Namespace) -> list[str]:
 
 
 def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
+    if args.backend_logs:
+        if (
+            collect_flag_targets(args)
+            or args.all
+            or args.compile_only
+            or args.arg1
+            or args.arg2
+            or any(getattr(args, flag["dest"]) for flag in SERIAL_MONITOR_FLAGS)
+        ):
+            raise SystemExit("Backend logs cannot be combined with deploy or serial options.")
+        return "logs", ["rov-backend.service"]
+
     serial_targets = [
         flag["target"]
         for flag in SERIAL_MONITOR_FLAGS
@@ -228,8 +214,9 @@ def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
 
     if not args.arg1:
         raise SystemExit(
-            "Choose a target: -tn, -t, -d, -b, -a; "
-            "a serial monitor: -ts, -tsn, -ds; or a legacy target name."
+            "Choose a target: -t, -d, -b, -a; "
+            "a serial monitor: -ts, -ds; backend logs: -bl; "
+            "or a legacy target name."
         )
 
     if args.arg1 in ("compile", "upload"):
@@ -351,19 +338,13 @@ def monitor_serial(target: str) -> None:
             manage_service(service, "start")
 
 
-def touch_serial_1200bps(port: str) -> None:
-    if serial is None:
-        print("[touch1200] pyserial not available; skipping explicit 1200 bps reset")
-        return
-
-    print(f"[touch1200] Opening {port} at 1200 bps to trigger bootloader")
+def follow_backend_logs(service: str) -> None:
+    cmd = ["sudo", "journalctl", "-u", service, "-f", "-n", "100"]
+    print(f"[logs] {' '.join(cmd)}")
     try:
-        ser = serial.Serial(port, 1200, timeout=1)
-        ser.setDTR(False)
-        time.sleep(0.2)
-        ser.close()
-    except Exception as exc:
-        print(f"[touch1200] Warning: explicit 1200 bps reset failed: {exc}")
+        subprocess.run(cmd, text=True, check=False)
+    except KeyboardInterrupt:
+        print("\n[logs] Log follow stopped.")
 
 
 def wait_for_ports_to_clear(patterns: list[str], timeout_s: float = 5.0) -> None:
@@ -469,17 +450,6 @@ def deploy_target(mode: str, target: str) -> None:
             fqbn = board["fqbn"]
             print(f"Upload port for {board['name']}: {port}")
 
-            if board.get("usb_reenumerate"):
-                reenumerate_usb_device(port)
-                port = wait_for_port(board["ports"])
-                print(f"USB device ready for {board['name']}: {port}")
-
-            if board.get("touch_1200bps"):
-                touch_serial_1200bps(port)
-                wait_for_ports_to_clear(board["ports"])
-                port = wait_for_port(board["ports"])
-                print(f"Bootloader/serial port ready for {board['name']}: {port}")
-
             # Optional: run a reset/toggle command (e.g., flip a relay) to reset the target board.
             # Run this after compile and before upload, then wait for the serial port to reappear.
             if board.get("reset_cmd"):
@@ -509,6 +479,9 @@ def main() -> int:
 
     if mode == "serial":
         monitor_serial(targets[0])
+        return 0
+    if mode == "logs":
+        follow_backend_logs(targets[0])
         return 0
 
     for target in targets:

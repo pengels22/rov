@@ -21,6 +21,7 @@ POINTS_TO_KEEP = 20000
 FILTER_POINTS = 6000
 FILTER_ANGLE_BINS = 720
 FILTER_MIN_SAMPLES = 2
+RECONNECT_DELAY_S = 2.0
 
 
 def parse_packet(pkt: bytes) -> List[Dict[str, float]]:
@@ -189,45 +190,58 @@ class LidarService:
         return points
 
     def _run(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                self._scan_once()
+            except Exception as exc:
+                self._last_error = str(exc)
+            finally:
+                self._running = False
+
+            if not self._stop_event.is_set():
+                self._stop_event.wait(RECONNECT_DELAY_S)
+
+    def _scan_once(self) -> None:
+        ser = None
         try:
             self._running = True
             self._last_error = None
 
             ser = serial.Serial(self.port, self.baud, timeout=1)
-            try:
-                ser.write(STOP_SCAN)
-                time.sleep(0.3)
-                ser.reset_input_buffer()
-                ser.write(START_SCAN)
-                time.sleep(0.5)
+            ser.write(STOP_SCAN)
+            time.sleep(0.3)
+            ser.reset_input_buffer()
+            ser.write(START_SCAN)
+            time.sleep(0.5)
 
-                while not self._stop_event.is_set():
-                    pkt = read_next_packet(ser)
-                    if not pkt:
-                        continue
+            while not self._stop_event.is_set():
+                pkt = read_next_packet(ser)
+                if not pkt:
+                    continue
 
-                    points = parse_packet(pkt)
-                    if not points:
-                        continue
+                points = parse_packet(pkt)
+                if not points:
+                    continue
 
-                    with self._lock:
-                        for point in points:
-                            angle_deg = point["angle_deg"]
-                            if (
-                                self._last_angle_deg is not None
-                                and angle_deg + 20 < self._last_angle_deg
-                                and self._current_scan_points
-                            ):
-                                self._latest_scan_points = self._current_scan_points[-self.points_to_keep:]
-                                self._current_scan_points = []
+                with self._lock:
+                    for point in points:
+                        angle_deg = point["angle_deg"]
+                        if (
+                            self._last_angle_deg is not None
+                            and angle_deg + 20 < self._last_angle_deg
+                            and self._current_scan_points
+                        ):
+                            self._latest_scan_points = self._current_scan_points[-self.points_to_keep:]
+                            self._current_scan_points = []
 
-                            self._current_scan_points.append(point)
-                            self._last_angle_deg = angle_deg
+                        self._current_scan_points.append(point)
+                        self._last_angle_deg = angle_deg
 
-                        self._points.extend(points)
-                        self._points = self._points[-self.points_to_keep:]
-                    self._last_packet_at = time.time()
-            finally:
+                    self._points.extend(points)
+                    self._points = self._points[-self.points_to_keep:]
+                self._last_packet_at = time.time()
+        finally:
+            if ser is not None:
                 try:
                     ser.write(STOP_SCAN)
                     time.sleep(0.2)
@@ -235,10 +249,6 @@ class LidarService:
                 except Exception:
                     pass
                 ser.close()
-        except Exception as exc:
-            self._last_error = str(exc)
-        finally:
-            self._running = False
 
 
 def main() -> None:

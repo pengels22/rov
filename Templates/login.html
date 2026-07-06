@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ROV Login</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #031017;
+      color: #e7f5fb;
+    }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+    }
+    form {
+      width: min(360px, calc(100vw - 48px));
+      padding: 32px;
+      border: 1px solid #256078;
+      border-radius: 14px;
+      background: #071b24;
+      box-shadow: 0 18px 60px #0008;
+    }
+    h1 { margin: 0 0 24px; font-size: 1.5rem; }
+    label { display: block; margin: 16px 0 6px; color: #b4dae8; }
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      font: inherit;
+    }
+    input { border: 1px solid #286077; background: #020b10; color: #fff; }
+    button {
+      margin-top: 24px;
+      border: 0;
+      background: #4ed0ff;
+      color: #021016;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #error { min-height: 1.4em; margin: 14px 0 0; color: #ff7777; }
+  </style>
+</head>
+<body>
+  <form id="loginForm">
+    <h1>ROV Control Login</h1>
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Log in</button>
+    <p id="error" role="alert"></p>
+  </form>
+  <script>
+    const form = document.getElementById("loginForm");
+    const error = document.getElementById("error");
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const button = form.querySelector("button");
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: form.username.value,
+            password: form.password.value,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Login failed");
+        window.location.replace("/");
+      } catch (loginError) {
+        error.textContent = loginError.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

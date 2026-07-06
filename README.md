@@ -40,7 +40,6 @@ Firmware deployment:
 - board packages for:
   - `arduino:esp32:nano_nora`
   - `esp32:esp32:XIAO_ESP32S3`
-  - `SparkFun:avr:promicro`
 
 ## Configuration
 
@@ -89,6 +88,22 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now rov-backend.service
 ```
 
+Configure the dashboard login:
+
+```bash
+sudo tee /etc/rov-backend.env >/dev/null <<'EOF'
+ROV_USERNAME=operator
+ROV_PASSWORD=choose-a-password
+EOF
+sudo chmod 600 /etc/rov-backend.env
+sudo systemctl restart rov-backend.service
+```
+
+Open `http://ROV.local:8080`; the backend redirects unauthenticated browsers
+to the login page. Login sessions last 12 hours and are cleared whenever the
+backend restarts. Use HTTPS or a trusted isolated network because plain HTTP
+does not encrypt the password in transit.
+
 Useful commands:
 
 ```bash
@@ -112,8 +127,8 @@ Print controller serial output (press Ctrl+C to stop and restart the backend):
 
 ```bash
 python3 firmware/deploy.py -ts   # turret XIAO
-python3 firmware/deploy.py -tsn  # turret servo Nano
 python3 firmware/deploy.py -ds   # drive Nano ESP32
+python3 firmware/deploy.py -bl   # follow backend service logs
 ```
 
 If you are already in `/home/pi/ROV/firmware`, run `python3 deploy.py -a`.
@@ -143,7 +158,8 @@ Notes:
 
 - uploading the `turret` target stops `rov-backend.service` before flashing and starts it again afterward
 - the script looks for board ports using the `/dev/rov/...` udev aliases
-- the Pro Micro servo board uses a 1200 bps touch/reset flow before upload
+- `turret_servos.ino` is intentionally excluded from CLI deployment and must
+  be uploaded manually
 
 ## Common API Endpoints
 

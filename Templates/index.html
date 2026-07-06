@@ -818,6 +818,7 @@
     const STATUS_REFRESH_MS = 500;
     const DRIVE_COMMAND_MS = 90;
     const DRIVE_DEADZONE = 0.12;
+    const DRIVE_STEERING_TOLERANCE_DEG = 45;
     const TURRET_COMMAND_MS = 180;
     const TURRET_STEP_MAX = 12;
     const TURRET_DEADZONE = 0.24;
@@ -846,9 +847,29 @@
     let driveCommandInFlight = false;
     let turretCommandInFlight = false;
     let turretHomeInFlight = false;
+    let turretStopSent = true;
     let driveStopSent = true;
     let brightnessSyncLocked = false;
     let relayCommandInFlight = false;
+    function controlHeaders() {
+      return { "Content-Type": "application/json" };
+    }
+
+    async function controlFetch(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: { ...controlHeaders(), ...(options.headers || {}) },
+      });
+      const payload = await response.json();
+      if (response.status === 401) {
+        window.location.replace("/login");
+        throw new Error("login required");
+      }
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || `request failed (${response.status})`);
+      }
+      return payload;
+    }
 
     function setText(id, value) {
       document.getElementById(id).textContent = value;
@@ -1061,17 +1082,10 @@
     async function setRelayState(path, enabled) {
       relayCommandInFlight = true;
       try {
-        const response = await fetch(path, {
+        const payload = await controlFetch(path, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
           body: JSON.stringify({ enabled }),
         });
-        const payload = await response.json();
-        if (!response.ok || payload.ok === false) {
-          throw new Error(payload.error || "relay update failed");
-        }
         updateRelayCard(motorEnableButton, motorEnableStatus, payload.relay_status?.motor_enable, "Motor Enable");
         updateRelayCard(batteryKillButton, batteryKillStatus, payload.relay_status?.battery_kill, "Battery Kill");
       } catch (error) {
@@ -1200,7 +1214,18 @@
 
     function getDriveCommand() {
       const throttleAxis = Math.abs(driveState.y) >= DRIVE_DEADZONE ? driveState.y : 0;
-      const turnAxis = Math.abs(driveState.x) >= DRIVE_DEADZONE ? driveState.x : 0;
+      const rawTurnAxis = Math.abs(driveState.x) >= DRIVE_DEADZONE ? driveState.x : 0;
+      const magnitude = Math.min(1, Math.hypot(throttleAxis, rawTurnAxis));
+      const angleFromStraightDeg = magnitude > 0
+        ? Math.atan2(Math.abs(rawTurnAxis), Math.abs(throttleAxis)) * 180 / Math.PI
+        : 0;
+      const steeringScale = clamp(
+        (angleFromStraightDeg - DRIVE_STEERING_TOLERANCE_DEG)
+          / (90 - DRIVE_STEERING_TOLERANCE_DEG),
+        0,
+        1,
+      );
+      const turnAxis = Math.sign(rawTurnAxis) * magnitude * steeringScale;
       return {
         throttle: Math.round(clamp(throttleAxis, -1, 1) * 255),
         turn: Math.round(clamp(turnAxis, -1, 1) * 255),
@@ -1218,12 +1243,13 @@
 
     async function sendDriveStop() {
       try {
-        await fetch("/api/drive/stop", {
+        await controlFetch("/api/drive/stop", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: "{}",
         });
       } catch (error) {
+        turretAlert.hidden = false;
+        turretAlert.textContent = `Drive stop failed: ${error.message}`;
       }
     }
 
@@ -1244,16 +1270,42 @@
           return;
         }
 
-        await fetch("/api/drive/joy", {
+        await controlFetch("/api/drive/joy", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(command),
         });
         driveStopSent = false;
       } catch (error) {
+        driveState.reset();
+        driveStopSent = true;
+        turretAlert.hidden = false;
+        turretAlert.textContent = `Drive command failed: ${error.message}`;
       } finally {
         driveCommandInFlight = false;
       }
+    }
+
+    async function renewControlLease() {
+      try {
+        await controlFetch("/api/client/heartbeat", {
+          method: "POST",
+          body: "{}",
+          cache: "no-store",
+        });
+      } catch (error) {
+        driveState.reset();
+        driveStopSent = true;
+        setOfflineState();
+      }
+    }
+
+    function disconnectControlClient() {
+      driveState.reset();
+      driveStopSent = true;
+      navigator.sendBeacon(
+        "/api/safety/disconnect",
+        new Blob(["{}"], { type: "application/json" }),
+      );
     }
 
     async function pumpTurretJoystick() {
@@ -1263,30 +1315,34 @@
 
       const command = getTurretCommand();
       if (command.pan_delta === 0 && command.tilt_delta === 0) {
+        if (!turretStopSent) {
+          turretCommandInFlight = true;
+          try {
+            await controlFetch("/api/turret/stop", {
+              method: "POST",
+              body: "{}",
+            });
+            turretStopSent = true;
+          } catch (error) {
+            turretReadout.textContent = `Turret stop failed: ${error.message}`;
+          } finally {
+            turretCommandInFlight = false;
+          }
+        }
         return;
       }
 
       turretCommandInFlight = true;
+      turretStopSent = command.pan_delta === 0;
       updateTurretHomeButton();
       try {
-        const response = await fetch("/api/turret/aim", {
+        const payload = await controlFetch("/api/turret/aim", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...command,
             time_ms: TURRET_COMMAND_MS,
           }),
         });
-        const payload = await response.json();
-        if (!response.ok || payload?.ok === false || payload?.error) {
-          const message = payload?.error || "turret command failed";
-          turretReadout.textContent = `Turret error: ${message}`;
-          turretAlert.hidden = false;
-          turretAlert.textContent = message;
-          flagMetric.classList.remove("is-hidden");
-          setText("flagsValue", message);
-          return;
-        }
         if (payload?.turret_state) {
           turretOverlay.textContent = `Range ${document.getElementById("rangeValue").textContent} | Pan ${formatDegrees(payload.turret_state.pan_deg)} | Tilt ${formatDegrees(payload.turret_state.tilt_deg)}`;
         }
@@ -2112,6 +2168,10 @@
 
       try {
         const response = await fetch("/api/dashboard", { cache: "no-store" });
+        if (response.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
         const data = await response.json();
 
         setOnlineState();
@@ -2146,6 +2206,10 @@
 
       try {
         const response = await fetch("/api/lidar", { cache: "no-store" });
+        if (response.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
         const data = await response.json();
 
         setOnlineState();
@@ -2226,6 +2290,16 @@
     updateTurretHomeButton();
     window.setInterval(pumpDriveJoystick, DRIVE_COMMAND_MS);
     window.setInterval(pumpTurretJoystick, TURRET_COMMAND_MS);
+    window.setInterval(renewControlLease, 1000);
+    window.addEventListener("pagehide", disconnectControlClient);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        disconnectControlClient();
+      } else {
+        renewControlLease();
+      }
+    });
+    renewControlLease();
     refreshStatus();
     refreshLidar();
     window.requestAnimationFrame(animationLoop);

@@ -61,10 +61,17 @@ const int PAN_IN2_PIN = 7;
 const int PAN_PWM_PIN = 9;
 const int PAN_HOME_PIN = 6;
 
-const int PAN_HOME_SPEED = -30;
+// Negative is clockwise with the current motor wiring.
+const int PAN_HOME_FAST_SPEED = -30;
+const int PAN_HOME_BACKOFF_SPEED = 30;
+const int PAN_HOME_SLOW_SPEED = -2;
 const int PAN_MIN_PWM = 35;
 
 const unsigned long PAN_HOME_TIMEOUT_MS = 30000;
+const unsigned long PAN_HOME_BACKOFF_TIMEOUT_MS = 3000;
+const unsigned long PAN_HOME_BACKOFF_CLEARANCE_MS = 120;
+const unsigned long PAN_HOME_SETTLE_MS = 100;
+const unsigned long PAN_HOME_SLOW_TIMEOUT_MS = 10000;
 
 int panSpeed = 0;
 bool panHomed = false;
@@ -344,37 +351,64 @@ void stopPan() {
 void homePan() {
   Serial.println("HOME START");
   showPixels(CLR_WHITE);
+  panHomed = false;
+
+  // First capture: approach clockwise at 30% unless already on the switch.
+  if (!homeSwitchPressed()) {
+    unsigned long fastStartTime = millis();
+    setPanSpeed(PAN_HOME_FAST_SPEED);
+
+    while (!homeSwitchPressed()) {
+      if (millis() - fastStartTime >= PAN_HOME_TIMEOUT_MS) {
+        stopPan();
+        showPixels(CLR_RED);
+        Serial.println("ERR HOME_FAST_TIMEOUT");
+        return;
+      }
+      delay(2);
+    }
+  }
+
+  stopPan();
+  delay(PAN_HOME_SETTLE_MS);
+
+  // Reverse until the switch releases, then continue briefly for clearance.
+  unsigned long backoffStartTime = millis();
+  setPanSpeed(PAN_HOME_BACKOFF_SPEED);
+  while (homeSwitchPressed()) {
+    if (millis() - backoffStartTime >= PAN_HOME_BACKOFF_TIMEOUT_MS) {
+      stopPan();
+      showPixels(CLR_RED);
+      Serial.println("ERR HOME_BACKOFF_TIMEOUT");
+      return;
+    }
+    delay(2);
+  }
+  delay(PAN_HOME_BACKOFF_CLEARANCE_MS);
+  stopPan();
+  delay(PAN_HOME_SETTLE_MS);
 
   if (homeSwitchPressed()) {
-    stopPan();
-    panHomed = true;
-
-    showPixels(CLR_GREEN);
-    Serial.println("HOME OK SWITCH_ALREADY_PRESSED");
+    showPixels(CLR_RED);
+    Serial.println("ERR HOME_SWITCH_DID_NOT_CLEAR");
     return;
   }
 
-  panHomed = false;
-
-  unsigned long startTime = millis();
-
-  setPanSpeed(PAN_HOME_SPEED);
-
+  // Final capture: approach clockwise at 2% for repeatable home position.
+  unsigned long slowStartTime = millis();
+  setPanSpeed(PAN_HOME_SLOW_SPEED);
   while (!homeSwitchPressed()) {
-    if (millis() - startTime >= PAN_HOME_TIMEOUT_MS) {
+    if (millis() - slowStartTime >= PAN_HOME_SLOW_TIMEOUT_MS) {
       stopPan();
-
       showPixels(CLR_RED);
-      Serial.println("ERR HOME_TIMEOUT");
+      Serial.println("ERR HOME_SLOW_TIMEOUT");
       return;
     }
-
     delay(2);
   }
 
   stopPan();
   delay(30);
-
   if (!homeSwitchPressed()) {
     showPixels(CLR_YELLOW);
     Serial.println("ERR HOME_SWITCH_BOUNCE");
