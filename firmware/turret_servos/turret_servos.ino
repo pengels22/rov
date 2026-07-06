@@ -42,31 +42,27 @@ void showPixels(uint32_t color) {
 // ============================================================
 // Pan motor driver
 //
-// D2 = IN1
-// D7 = IN2
-// D9 = PWM / enable
-// D6 = home switch
+// D9  = IN1
+// D6  = IN2 (hardware PWM)
+// D10 = home switch
 //
 // Home-switch wiring:
 // NC     -> 5 V
 // NO     -> GND
-// Common -> D6
+// Common -> D10
 //
 // Released = HIGH
 // Pressed  = LOW
 // ============================================================
 
-const int PAN_IN1_PIN = 2;
-const int PAN_IN2_PIN = 7;
-const int PAN_PWM_PIN = 9;
-const int PAN_HOME_PIN = 6;
+const int PAN_IN1_PIN = 9;
+const int PAN_IN2_PIN = 6;
+const int PAN_HOME_PIN = 10;
 
 // Negative is clockwise with the current motor wiring.
 const int PAN_HOME_FAST_SPEED = -30;
 const int PAN_HOME_BACKOFF_SPEED = 30;
 const int PAN_HOME_SLOW_SPEED = -2;
-const int PAN_MIN_PWM = 35;
-
 const unsigned long PAN_HOME_TIMEOUT_MS = 30000;
 const unsigned long PAN_HOME_BACKOFF_TIMEOUT_MS = 3000;
 const unsigned long PAN_HOME_BACKOFF_CLEARANCE_MS = 120;
@@ -122,7 +118,6 @@ void setup() {
   // Pan motor driver
   pinMode(PAN_IN1_PIN, OUTPUT);
   pinMode(PAN_IN2_PIN, OUTPUT);
-  pinMode(PAN_PWM_PIN, OUTPUT);
 
   stopPan();
 
@@ -314,34 +309,25 @@ void setPanSpeed(int speedValue) {
     return;
   }
 
-  int pwmValue = map(
-    abs(panSpeed),
-    1,
-    100,
-    PAN_MIN_PWM,
-    255
-  );
-
-  analogWrite(PAN_PWM_PIN, 0);
+  int pwmValue = map(abs(panSpeed), 0, 100, 0, 255);
 
   if (panSpeed > 0) {
+    // D9 cannot provide reliable PWM while the Servo library owns Timer1.
+    // Hold IN1 high and invert PWM on IN2 for slow-decay forward control.
     digitalWrite(PAN_IN1_PIN, HIGH);
-    digitalWrite(PAN_IN2_PIN, LOW);
+    analogWrite(PAN_IN2_PIN, 255 - pwmValue);
   } else {
+    // Hold IN1 low and PWM IN2 for fast-decay reverse control.
     digitalWrite(PAN_IN1_PIN, LOW);
-    digitalWrite(PAN_IN2_PIN, HIGH);
+    analogWrite(PAN_IN2_PIN, pwmValue);
   }
-
-  analogWrite(PAN_PWM_PIN, pwmValue);
 }
 
 void stopPan() {
   panSpeed = 0;
 
-  analogWrite(PAN_PWM_PIN, 0);
-
   digitalWrite(PAN_IN1_PIN, LOW);
-  digitalWrite(PAN_IN2_PIN, LOW);
+  analogWrite(PAN_IN2_PIN, 0);
 }
 
 // ============================================================
