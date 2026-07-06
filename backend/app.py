@@ -222,7 +222,6 @@ def system_status():
             "POST /api/turret/aim",
             "POST /api/turret/stop",
             "POST /api/turret/home",
-            "POST /api/turret/set_home",
             "GET /api/power/status",
             "POST /api/power/motor_enable",
             "POST /api/power/shore_power",
@@ -293,21 +292,6 @@ def move_turret_home(body):
         "servo": {"pan": pan_result, "tilt": tilt_result},
         "turret_state": turret_state.as_dict(),
     }
-
-def set_turret_home():
-    servo_status = servos.status()
-    tilt_position = servo_status["tilt"]["position"]
-    pan_result = servos.home_pan()
-    turret_state.update_pan_status(0, True, True)
-    turret_state.set_tilt_zero(tilt_position)
-    return {
-        "home": {
-            "pan": pan_result,
-            "tilt_position": tilt_position,
-        },
-        "turret_state": turret_state.as_dict(),
-    }
-
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ROVBackend/0.1"
@@ -647,9 +631,6 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/turret/home":
             return ok(move_turret_home(body))
-
-        if path == "/api/turret/set_home":
-            return ok(set_turret_home())
 
         if path == "/api/turret/mark_pan_home":
             result = servos.home_pan()
