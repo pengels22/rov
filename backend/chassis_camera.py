@@ -25,6 +25,7 @@ class ChassisCameraService:
         self._last_frame_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self._active_command: Optional[List[str]] = None
+        self._next_command_index = 0
         self._device = CHASSIS_CAMERA_DEVICE
         self._v4l2_controls = dict(CHASSIS_CAMERA_V4L2_CONTROLS)
         self._running = False
@@ -72,10 +73,17 @@ class ChassisCameraService:
             return self._latest_frame, self._frame_id
 
     def _select_command(self) -> Optional[List[str]]:
-        for command in self._commands:
-            if command and shutil.which(command[0]):
-                return command
-        return None
+        available = [
+            command
+            for command in self._commands
+            if command and shutil.which(command[0])
+        ]
+        if not available:
+            return None
+
+        index = self._next_command_index % len(available)
+        self._next_command_index += 1
+        return available[index]
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
@@ -97,7 +105,7 @@ class ChassisCameraService:
                 self._process = subprocess.Popen(
                     command,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
                     stdin=subprocess.DEVNULL,
                 )
                 self._read_mjpeg_stdout(self._process)
@@ -140,7 +148,19 @@ class ChassisCameraService:
             chunk = process.stdout.read(4096)
             if not chunk:
                 if process.poll() is not None:
-                    self._last_error = f"camera process exited with {process.returncode}"
+                    stderr = ""
+                    if process.stderr is not None:
+                        try:
+                            stderr = process.stderr.read(4096).decode(
+                                "utf-8",
+                                errors="replace",
+                            ).strip()
+                        except Exception:
+                            stderr = ""
+                    detail = f": {stderr}" if stderr else ""
+                    self._last_error = (
+                        f"camera process exited with {process.returncode}{detail}"
+                    )
                     return
                 time.sleep(0.01)
                 continue
