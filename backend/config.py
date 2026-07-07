@@ -61,6 +61,18 @@ CHASSIS_CAMERA_COMMANDS = [
         "-q",
         "libcamerasrc",
         "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "libcamerasrc",
+        "!",
         (
             "video/x-raw,"
             f"width={CHASSIS_CAMERA_WIDTH},"
