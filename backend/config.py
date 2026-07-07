@@ -59,6 +59,44 @@ CHASSIS_CAMERA_COMMANDS = [
     [
         "gst-launch-1.0",
         "-q",
+        "libcamerasrc",
+        "!",
+        (
+            "video/x-raw,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "libcamerasrc",
+        "!",
+        (
+            "video/x-raw,"
+            "width=320,"
+            "height=240,"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
         "v4l2src",
         f"device={CHASSIS_CAMERA_DEVICE}",
         "io-mode=3",
