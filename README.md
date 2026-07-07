@@ -152,7 +152,7 @@ The backend exposes a small HTTP API for:
 - chassis camera stream proxying
 - persistent command/system logs
 
-The main entrypoint is [backend/app.py](/home/pi/ROV/backend/app.py), and the shipped systemd unit is [backend/rov-backend.service](/home/pi/ROV/backend/rov-backend.service).
+The main entrypoint is [backend/app.py](/home/pi/ROV/backend/app.py), and the shipped systemd units are in [service/](/home/pi/ROV/service).
 
 ## Requirements
 
@@ -211,7 +211,7 @@ The included service file expects this checkout to live at `/home/pi/ROV`.
 Install and enable it with:
 
 ```bash
-sudo cp /home/pi/ROV/backend/rov-backend.service /etc/systemd/system/
+sudo cp /home/pi/ROV/service/rov-backend.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now rov-backend.service
 ```
@@ -358,6 +358,7 @@ the directory with `ROV_LOG_DIR=/path/to/logs` in `/etc/rov-backend.env`.
 - `firmware/turret_xiao/` - turret controller firmware
 - `firmware/turret_servos/` - dedicated servo controller firmware
 - `deploy.py` - compile/upload helper for the firmware targets and Pi service restart
+- `service/` - systemd unit files for Pi services
 - `config/` - runtime config files such as saved turret IP state
 - `Templates/` - frontend template served by the backend
 
