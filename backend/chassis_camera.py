@@ -24,6 +24,7 @@ class ChassisCameraService:
         self._frame_id = 0
         self._last_frame_at: Optional[float] = None
         self._last_error: Optional[str] = None
+        self._recent_errors: List[Dict[str, Any]] = []
         self._active_command: Optional[List[str]] = None
         self._next_command_index = 0
         self._device = CHASSIS_CAMERA_DEVICE
@@ -53,6 +54,7 @@ class ChassisCameraService:
             "frame_id": self._frame_id,
             "last_frame_at": self._last_frame_at,
             "last_error": self._last_error,
+            "recent_errors": list(self._recent_errors),
         }
 
     def wait_for_frame(
@@ -91,8 +93,9 @@ class ChassisCameraService:
             if not command:
                 self._last_error = (
                     "no chassis camera command found: "
-                    "rpicam-vid, libcamera-vid, or gst-launch-1.0"
+                    "rpicam-vid, libcamera-vid, ffmpeg, or gst-launch-1.0"
                 )
+                self._remember_error(self._last_error, command=None)
                 self._running = False
                 time.sleep(2.0)
                 continue
@@ -111,6 +114,7 @@ class ChassisCameraService:
                 self._read_mjpeg_stdout(self._process)
             except Exception as exc:
                 self._last_error = str(exc)
+                self._remember_error(self._last_error, command)
             finally:
                 self._running = False
                 self._stop_process()
@@ -138,6 +142,7 @@ class ChassisCameraService:
             )
         except Exception as exc:
             self._last_error = f"unable to configure chassis camera: {exc}"
+            self._remember_error(self._last_error, command=None)
 
     def _read_mjpeg_stdout(self, process: subprocess.Popen[bytes]) -> None:
         if process.stdout is None:
@@ -161,6 +166,7 @@ class ChassisCameraService:
                     self._last_error = (
                         f"camera process exited with {process.returncode}{detail}"
                     )
+                    self._remember_error(self._last_error, self._active_command)
                     return
                 time.sleep(0.01)
                 continue
@@ -190,6 +196,18 @@ class ChassisCameraService:
             self._last_frame_at = time.time()
             self._last_error = None
             self._condition.notify_all()
+
+    def _remember_error(
+        self,
+        error: str,
+        command: Optional[List[str]],
+    ) -> None:
+        entry = {
+            "command": " ".join(command) if command else None,
+            "error": error,
+        }
+        self._recent_errors.append(entry)
+        self._recent_errors = self._recent_errors[-8:]
 
     def _stop_process(self) -> None:
         process = self._process
