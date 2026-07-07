@@ -722,7 +722,7 @@
                 <div id="chassisFallback" class="placeholder">
                   <div>
                     <strong>Camera Feed Unavailable</strong>
-                    Waiting for chassis CSI camera service.
+                    <span id="chassisFallbackDetail">Waiting for chassis CSI camera service.</span>
                   </div>
                 </div>
               </div>
@@ -812,6 +812,7 @@
     const cameraFallback = document.getElementById("turretFallback");
     const chassisCameraImg = document.getElementById("chassisCamera");
     const chassisCameraFallback = document.getElementById("chassisFallback");
+    const chassisCameraFallbackDetail = document.getElementById("chassisFallbackDetail");
     const connectionState = document.getElementById("connectionState");
     const turretOverlay = document.getElementById("turretOverlay");
     const turretAlert = document.getElementById("turretAlert");
@@ -1068,7 +1069,15 @@
       if (!cameraStatus?.enabled || !streamUrl) {
         chassisCameraImg.hidden = true;
         chassisCameraFallback.hidden = false;
+        chassisCameraFallbackDetail.textContent = "Chassis CSI camera is disabled.";
         return;
+      }
+
+      if (cameraStatus?.last_error) {
+        chassisCameraImg.hidden = true;
+        chassisCameraFallback.hidden = false;
+        const command = cameraStatus.active_command ? ` (${cameraStatus.active_command})` : "";
+        chassisCameraFallbackDetail.textContent = `${cameraStatus.last_error}${command}`;
       }
 
       const resolvedStreamUrl = new URL(streamUrl, window.location.href).href;
@@ -2223,6 +2232,7 @@
     chassisCameraImg.addEventListener("error", () => {
       chassisCameraImg.hidden = true;
       chassisCameraFallback.hidden = false;
+      chassisCameraFallbackDetail.textContent = "Chassis camera stream failed to load.";
       chassisCameraImg.removeAttribute("src");
     });
 
