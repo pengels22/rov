@@ -108,13 +108,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Compile and optionally upload Arduino firmware for a configured target. "
-            "Examples: `python3 deploy.py -d`, "
-            "`python3 deploy.py -t`, "
-            "`python3 deploy.py -ts`, "
-            "`python3 deploy.py -ds`, "
-            "`python3 deploy.py -bl`, "
-            "`python3 deploy.py -b`, "
-            "`python3 deploy.py -a`."
+            "Examples: `./deploy -d`, "
+            "`./deploy -t`, "
+            "`./deploy -ts`, "
+            "`./deploy -ds`, "
+            "`./deploy -bl`, "
+            "`./deploy -b`, "
+            "`./deploy -a`."
         )
     )
     parser.add_argument(
@@ -213,7 +213,7 @@ def resolve_mode_and_targets(args: argparse.Namespace) -> tuple[str, list[str]]:
 
     if args.arg1 in ("compile", "upload"):
         if not args.arg2:
-            raise SystemExit("Usage: python3 deploy.py compile|upload drive|turret")
+            raise SystemExit("Usage: ./deploy compile|upload drive|turret")
         mode = args.arg1
         targets = [args.arg2]
     else:

@@ -4,28 +4,28 @@ This repository contains the Raspberry Pi backend and Arduino firmware used to c
 
 ## Deploy Flag Commands
 
-Use [deploy.py](/home/pi/ROV/deploy.py) from the repo root.
+Use [deploy](/home/pi/ROV/deploy) from the repo root.
 
 | Flag / command | Action |
 |---|---|
-| `python3 deploy.py -t` | Build and upload the turret XIAO ESP32S3 Sense firmware |
-| `python3 deploy.py -d` | Build and upload the drive Nano ESP32 firmware |
-| `python3 deploy.py -b` | Restart `rov-backend.service` |
-| `python3 deploy.py -ts` | Show turret XIAO serial output |
-| `python3 deploy.py -ds` | Show drive Nano ESP32 serial output |
-| `python3 deploy.py -bl` | Follow backend systemd logs |
-| `python3 deploy.py -a` | Build/upload all CLI-supported firmware targets, then restart backend |
-| `python3 deploy.py --compile-only drive` | Compile drive firmware without upload |
-| `python3 deploy.py --compile-only turret` | Compile turret XIAO firmware without upload |
+| `./deploy -t` | Build and upload the turret XIAO ESP32S3 Sense firmware |
+| `./deploy -d` | Build and upload the drive Nano ESP32 firmware |
+| `./deploy -b` | Restart `rov-backend.service` |
+| `./deploy -ts` | Show turret XIAO serial output |
+| `./deploy -ds` | Show drive Nano ESP32 serial output |
+| `./deploy -bl` | Follow backend systemd logs |
+| `./deploy -a` | Build/upload all CLI-supported firmware targets, then restart backend |
+| `./deploy --compile-only drive` | Compile drive firmware without upload |
+| `./deploy --compile-only turret` | Compile turret XIAO firmware without upload |
 
 Legacy positional forms still work:
 
 ```bash
-python3 deploy.py drive
-python3 deploy.py turret
-python3 deploy.py pi
-python3 deploy.py upload drive
-python3 deploy.py compile turret
+./deploy drive
+./deploy turret
+./deploy pi
+./deploy upload drive
+./deploy compile turret
 ```
 
 Notes:
@@ -357,7 +357,7 @@ the directory with `ROV_LOG_DIR=/path/to/logs` in `/etc/rov-backend.env`.
 - `firmware/drive_nano/` - drive controller firmware
 - `firmware/turret_xiao/` - turret controller firmware
 - `firmware/turret_servos/` - dedicated servo controller firmware
-- `deploy.py` - compile/upload helper for the firmware targets and Pi service restart
+- `deploy` / `deploy.py` - compile/upload helper for the firmware targets and Pi service restart
 - `service/` - systemd unit files for Pi services
 - `config/` - runtime config files such as saved turret IP state
 - `Templates/` - frontend template served by the backend
