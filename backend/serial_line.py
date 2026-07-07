@@ -38,6 +38,7 @@ class SerialLine:
         self._ser: Optional[serial.Serial] = None
         self.last_error: Optional[str] = None
         self.last_open_ok = False
+        self._last_logged_response_by_command: dict[str, str] = {}
 
     def _log(self, event: str, **fields) -> None:
         if not self.traffic_logger:
@@ -51,6 +52,15 @@ class SerialLine:
             )
         except Exception:
             pass
+
+    def _log_exchange(self, cmd: str, response: str) -> None:
+        clean_cmd = cmd.rstrip("\n")
+        previous = self._last_logged_response_by_command.get(clean_cmd)
+        if previous == response:
+            return
+        self._last_logged_response_by_command[clean_cmd] = response
+        self._log("tx", command=clean_cmd)
+        self._log("rx", command=clean_cmd, response=response)
 
     def open(self) -> serial.Serial:
         with self._lock:
@@ -88,11 +98,10 @@ class SerialLine:
                 if response_timeout is not None:
                     ser.timeout = response_timeout
                 ser.reset_input_buffer()
-                self._log("tx", command=cmd.rstrip("\n"))
                 ser.write((cmd.rstrip("\n") + "\n").encode("utf-8"))
                 ser.flush()
                 resp = ser.readline().decode("utf-8", errors="replace").strip()
-                self._log("rx", command=cmd.rstrip("\n"), response=resp)
+                self._log_exchange(cmd, resp)
                 self.last_error = None
                 return resp
             except Exception as e:
@@ -125,7 +134,6 @@ class SerialLine:
             try:
                 ser.timeout = timeout
                 ser.reset_input_buffer()
-                self._log("tx", command=cmd.rstrip("\n"))
                 ser.write((cmd.rstrip("\n") + "\n").encode("utf-8"))
                 ser.flush()
 
@@ -139,12 +147,12 @@ class SerialLine:
                         continue
                     last_nonempty = resp
                     if matcher(resp):
-                        self._log("rx", command=cmd.rstrip("\n"), response=resp)
+                        self._log_exchange(cmd, resp)
                         self.last_error = None
                         return resp
 
                 self.last_error = None
-                self._log("rx", command=cmd.rstrip("\n"), response=last_nonempty)
+                self._log_exchange(cmd, last_nonempty)
                 return last_nonempty
             except Exception as e:
                 self.last_error = str(e)

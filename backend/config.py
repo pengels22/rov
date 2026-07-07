@@ -28,7 +28,6 @@ AUTH_SESSION_HOURS = 12
 
 # Safety supervision. The backend sends HB independently of HTTP traffic.
 DRIVE_HEARTBEAT_INTERVAL_S = 1.0
-CLIENT_LEASE_TIMEOUT_S = 3.0
 
 # Rock 3C CSI chassis camera. The backend tries these commands in order and
 # proxies the MJPEG frames to the dashboard.

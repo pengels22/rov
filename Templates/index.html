@@ -1309,29 +1309,6 @@
       }
     }
 
-    async function renewControlLease() {
-      try {
-        await controlFetch("/api/client/heartbeat", {
-          method: "POST",
-          body: "{}",
-          cache: "no-store",
-        });
-      } catch (error) {
-        driveState.reset();
-        driveStopSent = true;
-        setOfflineState();
-      }
-    }
-
-    function disconnectControlClient() {
-      driveState.reset();
-      driveStopSent = true;
-      navigator.sendBeacon(
-        "/api/safety/disconnect",
-        new Blob(["{}"], { type: "application/json" }),
-      );
-    }
-
     async function pumpTurretJoystick() {
       if (turretCommandInFlight || turretHomeInFlight) {
         return;
@@ -2280,8 +2257,6 @@
     updateTurretHomeButton();
     window.setInterval(pumpDriveJoystick, DRIVE_COMMAND_MS);
     window.setInterval(pumpTurretJoystick, TURRET_COMMAND_MS);
-    window.setInterval(renewControlLease, 1000);
-    renewControlLease();
     refreshStatus();
     refreshLidar();
     window.requestAnimationFrame(animationLoop);

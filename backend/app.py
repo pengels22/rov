@@ -12,7 +12,7 @@ from config import (
     DRIVE_BAUD, TURRET_BAUD,
     HTTP_HOST, HTTP_PORT,
     AUTH_PASSWORD, AUTH_SESSION_HOURS, AUTH_USERNAME,
-    CLIENT_LEASE_TIMEOUT_S, DRIVE_HEARTBEAT_INTERVAL_S,
+    DRIVE_HEARTBEAT_INTERVAL_S,
     HTTP_MAX_BODY_BYTES,
     LOG_DIR, LOG_MAX_LINES,
     PAN_SERVO_ID, TILT_SERVO_ID,
@@ -69,7 +69,6 @@ drive_safety = DriveSafetySupervisor(
     drive,
     disable_motion_outputs,
     heartbeat_interval_s=DRIVE_HEARTBEAT_INTERVAL_S,
-    client_timeout_s=CLIENT_LEASE_TIMEOUT_S,
     system_logger=logs.system_event,
 )
 turret_state = TurretState()
@@ -604,7 +603,7 @@ class Handler(BaseHTTPRequestHandler):
                 "device_response": exc.response,
             })
         except (BrokenPipeError, ConnectionResetError):
-            drive_safety.safe_shutdown("control client connection lost")
+            pass
         except Exception:
             logs.system_event(
                 "error",
@@ -697,7 +696,6 @@ class Handler(BaseHTTPRequestHandler):
             return ok({"response": drive.stop()})
 
         if path == "/api/drive/joy":
-            drive_safety.renew_client_lease()
             motor_disabled = require_motor_enabled_for_drive()
             if motor_disabled:
                 return motor_disabled
@@ -709,7 +707,6 @@ class Handler(BaseHTTPRequestHandler):
             })
 
         if path == "/api/drive/move":
-            drive_safety.renew_client_lease()
             motor_disabled = require_motor_enabled_for_drive()
             if motor_disabled:
                 return motor_disabled
@@ -766,8 +763,6 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/power/motor_enable":
             enabled = require_bool(body, "enabled")
-            if enabled:
-                drive_safety.renew_client_lease()
             return ok({
                 "relay": relays.set_state("motor_enable", enabled),
                 "relay_status": relays.snapshot(),

@@ -70,9 +70,46 @@ class RovLogs:
             **fields,
         })
 
+    def _filter_repeated_serial_output(
+        self,
+        records: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        filtered: List[Dict[str, Any]] = []
+        last_response_by_command: Dict[tuple[str, str], str] = {}
+        pending_tx_by_command: Dict[tuple[str, str], Dict[str, Any]] = {}
+
+        for record in records:
+            event = record.get("event")
+            device = str(record.get("device", ""))
+            command = str(record.get("command", "")).strip()
+            key = (device, command)
+
+            if event == "tx" and device and command:
+                pending_tx_by_command[key] = record
+                continue
+
+            if event == "rx" and device and command:
+                response = str(record.get("response", ""))
+                if last_response_by_command.get(key) == response:
+                    pending_tx_by_command.pop(key, None)
+                    continue
+                last_response_by_command[key] = response
+                pending_tx = pending_tx_by_command.pop(key, None)
+                if pending_tx is not None:
+                    filtered.append(pending_tx)
+                filtered.append(record)
+                continue
+
+            filtered.append(record)
+
+        return filtered
+
     def snapshot(self, limit: Optional[int] = None) -> Dict[str, Any]:
+        commands = self._filter_repeated_serial_output(
+            self.command.read_records(limit)
+        )
         return {
-            "commands": self.command.read_records(limit),
+            "commands": commands,
             "system": self.system.read_records(limit),
             "files": {
                 "commands": str(self.command.path),

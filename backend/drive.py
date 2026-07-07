@@ -144,26 +144,21 @@ class DriveController:
 
 
 class DriveSafetySupervisor:
-    """Independent drive heartbeat and dashboard control lease."""
+    """Independent drive heartbeat safety supervisor."""
 
     def __init__(
         self,
         drive: DriveController,
         disable_motor: Callable[[], None],
         heartbeat_interval_s: float = 1.0,
-        client_timeout_s: float = 3.0,
         system_logger: Optional[Callable[..., None]] = None,
     ):
         self.drive = drive
         self.disable_motor = disable_motor
         self.system_logger = system_logger
         self.heartbeat_interval_s = max(0.1, float(heartbeat_interval_s))
-        self.client_timeout_s = max(self.heartbeat_interval_s, float(client_timeout_s))
-        self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self._client_deadline: Optional[float] = None
-        self._lease_expired = False
         self.last_heartbeat_at: Optional[float] = None
         self.last_heartbeat_error: Optional[str] = None
         self.last_safety_reason: Optional[str] = None
@@ -185,15 +180,10 @@ class DriveSafetySupervisor:
             self._thread.join(timeout=self.heartbeat_interval_s + 1.0)
 
     def renew_client_lease(self) -> None:
-        with self._lock:
-            self._client_deadline = time.monotonic() + self.client_timeout_s
-            self._lease_expired = False
+        return None
 
     def disconnect_client(self) -> None:
-        with self._lock:
-            self._client_deadline = None
-            self._lease_expired = True
-        self.safe_shutdown("client disconnected")
+        return None
 
     def safe_shutdown(self, reason: str) -> None:
         self.last_safety_reason = reason
@@ -212,15 +202,12 @@ class DriveSafetySupervisor:
             pass
 
     def snapshot(self) -> Dict[str, Any]:
-        with self._lock:
-            deadline = self._client_deadline
         return {
             "running": bool(self._thread and self._thread.is_alive()),
             "heartbeat_interval_s": self.heartbeat_interval_s,
             "last_heartbeat_at": self.last_heartbeat_at,
             "last_heartbeat_error": self.last_heartbeat_error,
-            "client_lease_active": deadline is not None and time.monotonic() < deadline,
-            "client_lease_timeout_s": self.client_timeout_s,
+            "client_lease_enabled": False,
             "last_safety_reason": self.last_safety_reason,
         }
 
@@ -234,19 +221,6 @@ class DriveSafetySupervisor:
             except Exception as exc:
                 self.last_heartbeat_error = str(exc)
                 self.safe_shutdown("drive heartbeat failed")
-
-            should_expire = False
-            with self._lock:
-                if (
-                    self._client_deadline is not None
-                    and time.monotonic() >= self._client_deadline
-                    and not self._lease_expired
-                ):
-                    self._client_deadline = None
-                    self._lease_expired = True
-                    should_expire = True
-            if should_expire:
-                self.safe_shutdown("client lease expired")
 
             elapsed = time.monotonic() - cycle_started
             self._stop_event.wait(max(0.0, self.heartbeat_interval_s - elapsed))

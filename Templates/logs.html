@@ -205,8 +205,24 @@
       return "log-info";
     }
 
+    function formatTimestamp(value) {
+      if (!value) return "--";
+      const normalized = String(value).replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+      const date = new Date(normalized);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString(undefined, {
+        month: "numeric",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      });
+    }
+
     function formatCommandRecord(record) {
-      const ts = escapeHtml(record.ts || "--");
+      const ts = escapeHtml(formatTimestamp(record.ts));
       if (record.event === "tx") {
         const device = escapeHtml(record.device || "device");
         const line = `${ts} <span class="log-label">${device} TX</span> ${escapeHtml(record.command || "")}`;
@@ -234,7 +250,7 @@
     }
 
     function formatSystemRecord(record) {
-      const ts = escapeHtml(record.ts || "--");
+      const ts = escapeHtml(formatTimestamp(record.ts));
       const level = String(record.level || "info").toUpperCase();
       const message = record.message || record.raw || JSON.stringify(record);
       const extra = { ...record };
@@ -264,7 +280,7 @@
         systemLog.innerHTML = system.map(formatSystemRecord).join("\n");
         commandMeta.textContent = `${commands.length}/${payload.max_lines || 200} lines · ${payload.files?.commands || ""}`;
         systemMeta.textContent = `${system.length}/${payload.max_lines || 200} lines · ${payload.files?.system || ""}`;
-        statusNode.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        statusNode.textContent = `Updated ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}`;
       } catch (error) {
         statusNode.textContent = error.message;
       }
