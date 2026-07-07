@@ -36,13 +36,7 @@ CHASSIS_CAMERA_WIDTH = 640
 CHASSIS_CAMERA_HEIGHT = 480
 CHASSIS_CAMERA_FPS = 15
 CHASSIS_CAMERA_DEVICE = "/dev/video0"
-CHASSIS_CAMERA_V4L2_CONTROLS = {
-    "auto_exposure": 0,
-    "gain_automatic": 1,
-    "white_balance_automatic": 1,
-    "horizontal_flip": 1,
-    "vertical_flip": 1,
-}
+CHASSIS_CAMERA_V4L2_CONTROLS = {}
 CHASSIS_CAMERA_COMMANDS = [
     [
         "rpicam-vid",
@@ -63,46 +57,70 @@ CHASSIS_CAMERA_COMMANDS = [
         "-o", "-",
     ],
     [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "warning",
-        "-f", "v4l2",
-        "-input_format", "nv12",
-        "-video_size", f"{CHASSIS_CAMERA_WIDTH}x{CHASSIS_CAMERA_HEIGHT}",
-        "-framerate", str(CHASSIS_CAMERA_FPS),
-        "-i", CHASSIS_CAMERA_DEVICE,
-        "-an",
-        "-f", "mjpeg",
-        "-q:v", "5",
-        "pipe:1",
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=4",
+        "!",
+        (
+            "video/x-raw,"
+            "format=NV12,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
     ],
     [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "warning",
-        "-f", "v4l2",
-        "-input_format", "uyvy422",
-        "-video_size", f"{CHASSIS_CAMERA_WIDTH}x{CHASSIS_CAMERA_HEIGHT}",
-        "-framerate", str(CHASSIS_CAMERA_FPS),
-        "-i", CHASSIS_CAMERA_DEVICE,
-        "-an",
-        "-f", "mjpeg",
-        "-q:v", "5",
-        "pipe:1",
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=4",
+        "!",
+        (
+            "video/x-raw,"
+            "format=UYVY,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
     ],
     [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "warning",
-        "-f", "v4l2",
-        "-input_format", "nv16",
-        "-video_size", f"{CHASSIS_CAMERA_WIDTH}x{CHASSIS_CAMERA_HEIGHT}",
-        "-framerate", str(CHASSIS_CAMERA_FPS),
-        "-i", CHASSIS_CAMERA_DEVICE,
-        "-an",
-        "-f", "mjpeg",
-        "-q:v", "5",
-        "pipe:1",
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=4",
+        "!",
+        (
+            "video/x-raw,"
+            "format=NV16,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
     ],
     [
         "gst-launch-1.0",
