@@ -18,6 +18,7 @@ Thumbs.db
 .vscode/
 
 # Logs and local runtime files
+logs/
 *.log
 # Runtime-discovered turret stream target; managed by local services.
 config/turret_ip.txt
