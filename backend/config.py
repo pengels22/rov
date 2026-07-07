@@ -35,7 +35,7 @@ CHASSIS_CAMERA_ENABLED = True
 CHASSIS_CAMERA_WIDTH = 640
 CHASSIS_CAMERA_HEIGHT = 480
 CHASSIS_CAMERA_FPS = 15
-CHASSIS_CAMERA_DEVICE = "/dev/video0"
+CHASSIS_CAMERA_DEVICE = os.environ.get("ROV_CHASSIS_CAMERA_DEVICE", "/dev/video0")
 CHASSIS_CAMERA_V4L2_CONTROLS = {}
 CHASSIS_CAMERA_COMMANDS = [
     [
@@ -55,6 +55,72 @@ CHASSIS_CAMERA_COMMANDS = [
         "--height", str(CHASSIS_CAMERA_HEIGHT),
         "--framerate", str(CHASSIS_CAMERA_FPS),
         "-o", "-",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=3",
+        "!",
+        (
+            "video/x-raw,"
+            "format=NV12,"
+            "width=320,"
+            "height=240,"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=3",
+        "!",
+        (
+            "video/x-raw,"
+            "format=UYVY,"
+            "width=320,"
+            "height=240,"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=4",
+        "!",
+        (
+            "video/x-raw,"
+            "format=NV12,"
+            "width=320,"
+            "height=240,"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
     ],
     [
         "gst-launch-1.0",
