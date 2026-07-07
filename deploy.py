@@ -273,7 +273,9 @@ def pull_latest() -> None:
     if not (PROJECT_ROOT / ".git").exists():
         print("[git] Skipping pull; project root is not a git checkout.")
         return
+    print("[git] Pulling latest changes before deploy...")
     run_command(["git", "-C", str(PROJECT_ROOT), "pull", "--ff-only"], "git")
+    print("[git] Pull complete.")
 
 
 def manage_service(service: str, action: str) -> None:

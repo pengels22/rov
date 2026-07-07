@@ -76,7 +76,6 @@ class RovLogs:
     ) -> List[Dict[str, Any]]:
         filtered: List[Dict[str, Any]] = []
         last_response_by_command: Dict[tuple[str, str], str] = {}
-        pending_tx_by_command: Dict[tuple[str, str], Dict[str, Any]] = {}
 
         for record in records:
             event = record.get("event")
@@ -85,18 +84,13 @@ class RovLogs:
             key = (device, command)
 
             if event == "tx" and device and command:
-                pending_tx_by_command[key] = record
                 continue
 
             if event == "rx" and device and command:
                 response = str(record.get("response", ""))
                 if last_response_by_command.get(key) == response:
-                    pending_tx_by_command.pop(key, None)
                     continue
                 last_response_by_command[key] = response
-                pending_tx = pending_tx_by_command.pop(key, None)
-                if pending_tx is not None:
-                    filtered.append(pending_tx)
                 filtered.append(record)
                 continue
 

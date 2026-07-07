@@ -224,9 +224,7 @@
     function formatCommandRecord(record) {
       const ts = escapeHtml(formatTimestamp(record.ts));
       if (record.event === "tx") {
-        const device = escapeHtml(record.device || "device");
-        const line = `${ts} <span class="log-label">${device} TX</span> ${escapeHtml(record.command || "")}`;
-        return `<span class="log-line ${deviceClass(record.device)}">${line}</span>`;
+        return "";
       }
       if (record.event === "rx") {
         const device = escapeHtml(record.device || "device");
@@ -276,7 +274,7 @@
 
         const commands = payload.commands || [];
         const system = payload.system || [];
-        commandLog.innerHTML = commands.slice().reverse().map(formatCommandRecord).join("\n");
+        commandLog.innerHTML = commands.slice().reverse().map(formatCommandRecord).filter(Boolean).join("\n");
         systemLog.innerHTML = system.slice().reverse().map(formatSystemRecord).join("\n");
         commandMeta.textContent = `${commands.length}/${payload.max_lines || 200} lines · ${payload.files?.commands || ""}`;
         systemMeta.textContent = `${system.length}/${payload.max_lines || 200} lines · ${payload.files?.system || ""}`;
