@@ -103,16 +103,17 @@ class TurretController:
         if len(parts) < 6 or parts[0] != "STATUS":
             return {"raw": resp, "parse_error": True}
 
+        tof_status = parts[5]
         return {
             "raw": resp,
             "wifi_mode": parts[1],
             "ip": parts[2],
             "camera": parts[3],
             "accelerometer": parts[4],
-            "tof": parts[5],
+            "tof": tof_status,
             "camera_ok": parts[3] == "CAM_OK",
             "accel_ok": not parts[4].endswith("ERR"),
-            "tof_ok": parts[5] == "TOF_OK",
+            "tof_ok": tof_status in ("TOF_OK", "US_OK"),
         }
 
     @staticmethod
@@ -134,6 +135,6 @@ class TurretController:
             "flags": flags,
             "camera_ok": "C1" in flags,
             "accel_ok": "A1" in flags,
-            "tof_ok": "T1" in flags,
+            "tof_ok": "T1" in flags or "U1" in flags,
             "wifi_ok": "W1" in flags,
         }

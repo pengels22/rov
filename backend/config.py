@@ -67,6 +67,41 @@ CHASSIS_CAMERA_COMMANDS = [
         "-q",
         "v4l2src",
         f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=1",
+        "!",
+        (
+            "video/x-raw,"
+            "format=NV16,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
+        "!",
+        "videoconvert",
+        "!",
+        "jpegenc",
+        "!",
+        "fdsink",
+        "fd=1",
+    ],
+    [
+        "gst-launch-1.0",
+        "-q",
+        "v4l2src",
+        f"device={CHASSIS_CAMERA_DEVICE}",
         "io-mode=2",
         "!",
         (
