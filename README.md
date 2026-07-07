@@ -17,6 +17,7 @@ Use [deploy](/home/pi/ROV/deploy) from the repo root.
 | `./deploy -a` | Build/upload all CLI-supported firmware targets, then restart backend |
 | `./deploy --compile-only drive` | Compile drive firmware without upload |
 | `./deploy --compile-only turret` | Compile turret XIAO firmware without upload |
+| `./deploy --no-pull -b` | Restart backend without pulling first |
 
 Legacy positional forms still work:
 
@@ -31,6 +32,7 @@ Legacy positional forms still work:
 Notes:
 
 - Uploading `drive` or `turret` stops `rov-backend.service` before flashing and starts it again afterward.
+- Deploy/restart actions run `git pull --ff-only` first unless `--no-pull` is passed.
 - The script looks for board ports using the `/dev/rov/...` udev aliases.
 - `turret_servos.ino` is intentionally excluded from CLI deployment and must be uploaded manually.
 

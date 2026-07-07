@@ -276,8 +276,8 @@
 
         const commands = payload.commands || [];
         const system = payload.system || [];
-        commandLog.innerHTML = commands.map(formatCommandRecord).join("\n");
-        systemLog.innerHTML = system.map(formatSystemRecord).join("\n");
+        commandLog.innerHTML = commands.slice().reverse().map(formatCommandRecord).join("\n");
+        systemLog.innerHTML = system.slice().reverse().map(formatSystemRecord).join("\n");
         commandMeta.textContent = `${commands.length}/${payload.max_lines || 200} lines · ${payload.files?.commands || ""}`;
         systemMeta.textContent = `${system.length}/${payload.max_lines || 200} lines · ${payload.files?.system || ""}`;
         statusNode.textContent = `Updated ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true })}`;

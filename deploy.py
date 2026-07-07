@@ -114,7 +114,8 @@ def parse_args() -> argparse.Namespace:
             "`./deploy -ds`, "
             "`./deploy -bl`, "
             "`./deploy -b`, "
-            "`./deploy -a`."
+            "`./deploy -a`. "
+            "Deploy/restart actions run `git pull --ff-only` first."
         )
     )
     parser.add_argument(
@@ -157,6 +158,11 @@ def parse_args() -> argparse.Namespace:
         "--compile-only",
         action="store_true",
         help="Compile the sketch and stop before upload.",
+    )
+    parser.add_argument(
+        "--no-pull",
+        action="store_true",
+        help="Skip the automatic `git pull --ff-only` before deploy/restart actions.",
     )
     return parser.parse_args()
 
@@ -261,6 +267,13 @@ def run_command(cmd: list[str], label: str) -> None:
     completed = subprocess.run(cmd, text=True)
     if completed.returncode != 0:
         raise SystemExit(completed.returncode)
+
+
+def pull_latest() -> None:
+    if not (PROJECT_ROOT / ".git").exists():
+        print("[git] Skipping pull; project root is not a git checkout.")
+        return
+    run_command(["git", "-C", str(PROJECT_ROOT), "pull", "--ff-only"], "git")
 
 
 def manage_service(service: str, action: str) -> None:
@@ -407,6 +420,9 @@ def main() -> int:
     if mode == "logs":
         follow_backend_logs(targets[0])
         return 0
+
+    if not args.no_pull:
+        pull_latest()
 
     for target in targets:
         deploy_target(mode, target)
