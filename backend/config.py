@@ -32,8 +32,8 @@ DRIVE_HEARTBEAT_INTERVAL_S = 1.0
 # Rock 3C CSI chassis camera. The backend tries these commands in order and
 # proxies the MJPEG frames to the dashboard.
 CHASSIS_CAMERA_ENABLED = True
-CHASSIS_CAMERA_WIDTH = 800
-CHASSIS_CAMERA_HEIGHT = 600
+CHASSIS_CAMERA_WIDTH = 640
+CHASSIS_CAMERA_HEIGHT = 480
 CHASSIS_CAMERA_FPS = 15
 CHASSIS_CAMERA_DEVICE = "/dev/video0"
 CHASSIS_CAMERA_V4L2_CONTROLS = {
@@ -67,11 +67,11 @@ CHASSIS_CAMERA_COMMANDS = [
         "-q",
         "v4l2src",
         f"device={CHASSIS_CAMERA_DEVICE}",
-        "io-mode=1",
+        "io-mode=2",
         "!",
         (
             "video/x-raw,"
-            "format=NV16,"
+            "format=NV12,"
             f"width={CHASSIS_CAMERA_WIDTH},"
             f"height={CHASSIS_CAMERA_HEIGHT},"
             f"framerate={CHASSIS_CAMERA_FPS}/1"
@@ -89,6 +89,15 @@ CHASSIS_CAMERA_COMMANDS = [
         "-q",
         "v4l2src",
         f"device={CHASSIS_CAMERA_DEVICE}",
+        "io-mode=2",
+        "!",
+        (
+            "video/x-raw,"
+            "format=UYVY,"
+            f"width={CHASSIS_CAMERA_WIDTH},"
+            f"height={CHASSIS_CAMERA_HEIGHT},"
+            f"framerate={CHASSIS_CAMERA_FPS}/1"
+        ),
         "!",
         "videoconvert",
         "!",
