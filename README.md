@@ -86,9 +86,9 @@ Source: [firmware/drive_nano/drive_nano.ino](/home/pi/ROV/firmware/drive_nano/dr
 | Right | D6 / D7 | D11 |
 
 Drive firmware currently inverts both motor directions in software and applies
-a right-side PWM scale of `0.75` to compensate for the left motor running about
-25% slower. `GET /api/drive/status` reports the actual post-trim `left_pwm` and
-`right_pwm` values.
+a right-side PWM scale of `0.90` based on encoder testing. `GET
+/api/drive/status` reports the actual post-trim `left_pwm` and `right_pwm`
+values.
 
 ### Turret Servo Controller / Pro Micro-Leonardo
 

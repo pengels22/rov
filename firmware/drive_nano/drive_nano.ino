@@ -44,7 +44,7 @@ Preferences prefs;
 const int MOTOR_LEFT_DIR_SIGN = -1;
 const int MOTOR_RIGHT_DIR_SIGN = -1;
 const float MOTOR_LEFT_PWM_SCALE = 1.00f;
-const float MOTOR_RIGHT_PWM_SCALE = 0.75f;
+const float MOTOR_RIGHT_PWM_SCALE = 0.90f;
 
 // =========================
 // Drive state
