@@ -25,12 +25,12 @@ Preferences prefs;
 #define ENC_R_A     4
 #define ENC_R_B     5
 
-#define MOTOR_INA   6   // Left forward
-#define MOTOR_INB   7   // Left backward
-#define MOTOR_INC   8   // Right forward
-#define MOTOR_IND   9   // Right backward
-#define MOTOR_PWMA  11  // Left PWM
-#define MOTOR_PWMB  12  // Right PWM
+#define MOTOR_LEFT_FWD_PIN    8   // Left forward
+#define MOTOR_LEFT_REV_PIN    9   // Left backward
+#define MOTOR_RIGHT_FWD_PIN   6   // Right forward
+#define MOTOR_RIGHT_REV_PIN   7   // Right backward
+#define MOTOR_LEFT_PWM_PIN    12  // Left PWM
+#define MOTOR_RIGHT_PWM_PIN   11  // Right PWM
 
 #define BATT_PIN    A0
 
@@ -123,18 +123,18 @@ void motorLeft(int dir, int pwm = 255) {
   pwm = constrain(pwm, 0, 255);
 
   if (dir > 0) {
-    digitalWrite(MOTOR_INA, HIGH);
-    digitalWrite(MOTOR_INB, LOW);
+    digitalWrite(MOTOR_LEFT_FWD_PIN, HIGH);
+    digitalWrite(MOTOR_LEFT_REV_PIN, LOW);
   } else if (dir < 0) {
-    digitalWrite(MOTOR_INA, LOW);
-    digitalWrite(MOTOR_INB, HIGH);
+    digitalWrite(MOTOR_LEFT_FWD_PIN, LOW);
+    digitalWrite(MOTOR_LEFT_REV_PIN, HIGH);
   } else {
-    digitalWrite(MOTOR_INA, LOW);
-    digitalWrite(MOTOR_INB, LOW);
+    digitalWrite(MOTOR_LEFT_FWD_PIN, LOW);
+    digitalWrite(MOTOR_LEFT_REV_PIN, LOW);
   }
 
   if (dir == 0) pwm = 0;
-  analogWrite(MOTOR_PWMA, pwm);
+  analogWrite(MOTOR_LEFT_PWM_PIN, pwm);
   lastLeftPwm = pwm;
 }
 
@@ -142,18 +142,18 @@ void motorRight(int dir, int pwm = 255) {
   pwm = constrain(pwm, 0, 255);
 
   if (dir > 0) {
-    digitalWrite(MOTOR_INC, HIGH);
-    digitalWrite(MOTOR_IND, LOW);
+    digitalWrite(MOTOR_RIGHT_FWD_PIN, HIGH);
+    digitalWrite(MOTOR_RIGHT_REV_PIN, LOW);
   } else if (dir < 0) {
-    digitalWrite(MOTOR_INC, LOW);
-    digitalWrite(MOTOR_IND, HIGH);
+    digitalWrite(MOTOR_RIGHT_FWD_PIN, LOW);
+    digitalWrite(MOTOR_RIGHT_REV_PIN, HIGH);
   } else {
-    digitalWrite(MOTOR_INC, LOW);
-    digitalWrite(MOTOR_IND, LOW);
+    digitalWrite(MOTOR_RIGHT_FWD_PIN, LOW);
+    digitalWrite(MOTOR_RIGHT_REV_PIN, LOW);
   }
 
   if (dir == 0) pwm = 0;
-  analogWrite(MOTOR_PWMB, pwm);
+  analogWrite(MOTOR_RIGHT_PWM_PIN, pwm);
   lastRightPwm = pwm;
 }
 
@@ -561,12 +561,12 @@ void setup() {
   ticksPerInch = prefs.getInt("tpi", 100);
   prefs.end();
 
-  pinMode(MOTOR_INA, OUTPUT);
-  pinMode(MOTOR_INB, OUTPUT);
-  pinMode(MOTOR_INC, OUTPUT);
-  pinMode(MOTOR_IND, OUTPUT);
-  pinMode(MOTOR_PWMA, OUTPUT);
-  pinMode(MOTOR_PWMB, OUTPUT);
+  pinMode(MOTOR_LEFT_FWD_PIN, OUTPUT);
+  pinMode(MOTOR_LEFT_REV_PIN, OUTPUT);
+  pinMode(MOTOR_RIGHT_FWD_PIN, OUTPUT);
+  pinMode(MOTOR_RIGHT_REV_PIN, OUTPUT);
+  pinMode(MOTOR_LEFT_PWM_PIN, OUTPUT);
+  pinMode(MOTOR_RIGHT_PWM_PIN, OUTPUT);
 
   stopMotors();
 
@@ -590,12 +590,12 @@ void setup() {
   );
   Serial.printf(
     "INFO,MOTOR_PINS,LIN1=%d,LIN2=%d,LPWM=%d,RIN1=%d,RIN2=%d,RPWM=%d,STBY=EXT_5V\n",
-    MOTOR_INA,
-    MOTOR_INB,
-    MOTOR_PWMA,
-    MOTOR_INC,
-    MOTOR_IND,
-    MOTOR_PWMB
+    MOTOR_LEFT_FWD_PIN,
+    MOTOR_LEFT_REV_PIN,
+    MOTOR_LEFT_PWM_PIN,
+    MOTOR_RIGHT_FWD_PIN,
+    MOTOR_RIGHT_REV_PIN,
+    MOTOR_RIGHT_PWM_PIN
   );
 }
 

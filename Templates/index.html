@@ -608,6 +608,15 @@
       min-height: 2.4em;
     }
 
+    .drive-pwm-readout {
+      margin: 4px 0 0;
+      color: var(--text);
+      font-size: 0.78rem;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      min-height: 1.2em;
+    }
+
     .turret-action-row {
       display: flex;
       justify-content: center;
@@ -772,6 +781,7 @@
                   </div>
                 </div>
                 <p class="joystick-readout" id="driveReadout">Idle</p>
+                <p class="drive-pwm-readout" id="drivePwmReadout">PWM L -- / R --</p>
               </section>
             </div>
           </div>
@@ -826,6 +836,7 @@
     const driveJoystick = document.getElementById("driveJoystick");
     const turretJoystick = document.getElementById("turretJoystick");
     const driveReadout = document.getElementById("driveReadout");
+    const drivePwmReadout = document.getElementById("drivePwmReadout");
     const turretReadout = document.getElementById("turretReadout");
     const turretHomeButton = document.getElementById("turretHomeButton");
     const motorEnableButton = document.getElementById("motorEnableButton");
@@ -922,6 +933,16 @@
       const normalized = Math.max(-2, Math.min(2, Number(value) || 0));
       brightnessSlider.value = String(normalized);
       brightnessValue.textContent = String(normalized);
+    }
+
+    function updateDrivePwmReadout(driveStatus) {
+      const leftPwm = Number.isFinite(Number(driveStatus?.left_pwm))
+        ? Number(driveStatus.left_pwm)
+        : null;
+      const rightPwm = Number.isFinite(Number(driveStatus?.right_pwm))
+        ? Number(driveStatus.right_pwm)
+        : null;
+      drivePwmReadout.textContent = `PWM L ${leftPwm ?? "--"} / R ${rightPwm ?? "--"}`;
     }
 
     function updateRelayCard(button, statusNode, relay, label) {
@@ -2131,6 +2152,7 @@
       setText("servoBatteryStatus", "--");
       updateRelayCard(motorEnableButton, motorEnableStatus, null, "Motor Enable");
       updatePowerSourceCard(null);
+      updateDrivePwmReadout(null);
     }
 
     function setOnlineState() {
@@ -2169,6 +2191,7 @@
         setText("servoBatteryStatus", formatBatteryVoltage(data.servo_battery_v ?? data.servo_status?.battery_v));
         updateRelayCard(motorEnableButton, motorEnableStatus, data.relay_status?.motor_enable, "Motor Enable");
         updatePowerSourceCard(data.relay_status?.power_source);
+        updateDrivePwmReadout(data.drive_status);
       } catch (error) {
         setOfflineState();
       } finally {

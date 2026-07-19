@@ -72,18 +72,18 @@ Source: [firmware/drive_nano/drive_nano.ino](/home/pi/ROV/firmware/drive_nano/dr
 | Left encoder B | D3 | `INPUT_PULLUP` |
 | Right encoder A | D4 | `INPUT_PULLUP` |
 | Right encoder B | D5 | `INPUT_PULLUP` |
-| Left motor forward input | D6 | Output |
-| Left motor reverse input | D7 | Output |
-| Right motor forward input | D8 | Output |
-| Right motor reverse input | D9 | Output |
-| Left motor PWM | D11 | PWM output |
-| Right motor PWM | D12 | PWM output |
+| Left motor forward input | D8 | Output |
+| Left motor reverse input | D9 | Output |
+| Right motor forward input | D6 | Output |
+| Right motor reverse input | D7 | Output |
+| Left motor PWM | D12 | PWM output |
+| Right motor PWM | D11 | PWM output |
 | Battery voltage sense | A0 | Analog input, divider ratio `5.0` |
 
 | Motor side | Driver inputs | PWM |
 |---|---|---|
-| Left | D6 / D7 | D11 |
-| Right | D8 / D9 | D12 |
+| Left | D8 / D9 | D12 |
+| Right | D6 / D7 | D11 |
 
 ### Turret Servo Controller / Pro Micro-Leonardo
 
