@@ -40,6 +40,11 @@ Preferences prefs;
 #define BATT_DIVIDER     5.0f
 #define WATCHDOG_MS      2000
 
+// Adjust these when motor wiring, mounting, or output balance changes.
+const int MOTOR_LEFT_DIR_SIGN = -1;
+const int MOTOR_RIGHT_DIR_SIGN = -1;
+const float MOTOR_LEFT_PWM_SCALE = 1.00f;
+const float MOTOR_RIGHT_PWM_SCALE = 0.75f;
 
 // =========================
 // Drive state
@@ -120,6 +125,7 @@ void IRAM_ATTR isrRightA() {
 // dir: -1 = reverse, 0 = stop, +1 = forward
 
 void motorLeft(int dir, int pwm = 255) {
+  dir *= MOTOR_LEFT_DIR_SIGN;
   pwm = constrain(pwm, 0, 255);
 
   if (dir > 0) {
@@ -139,6 +145,7 @@ void motorLeft(int dir, int pwm = 255) {
 }
 
 void motorRight(int dir, int pwm = 255) {
+  dir *= MOTOR_RIGHT_DIR_SIGN;
   pwm = constrain(pwm, 0, 255);
 
   if (dir > 0) {
@@ -157,7 +164,14 @@ void motorRight(int dir, int pwm = 255) {
   lastRightPwm = pwm;
 }
 
+int scaleSignedPwm(int signedPwm, float scale) {
+  return constrain((int)round(signedPwm * scale), -255, 255);
+}
+
 void applyDrive(int leftSignedPwm, int rightSignedPwm) {
+  leftSignedPwm = scaleSignedPwm(leftSignedPwm, MOTOR_LEFT_PWM_SCALE);
+  rightSignedPwm = scaleSignedPwm(rightSignedPwm, MOTOR_RIGHT_PWM_SCALE);
+
   int leftDir = 0;
   int rightDir = 0;
 
